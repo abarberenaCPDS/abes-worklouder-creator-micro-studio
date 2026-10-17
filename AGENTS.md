@@ -1,0 +1,14 @@
+# Agent guidance
+
+- Targets deploy to macOS 13 and the package uses Swift tools 5.9. `AbesWorkLouderCreatorMicroStudio.xcodeproj` has the menu-bar app and standalone `Inspector` schemes; Studio hosts the shared Inspector view in its sidebar and embeds the separately permissioned Inspector utility for direct debugging.
+- App UI/resources live in `Apps/`; shared HID, bridge, configuration, and integrations code plus tests live in the local Swift package `Packages/CreatorMicroStudioKit`.
+- Verify with `swift test --package-path Packages/CreatorMicroStudioKit`, `xcodebuild -project AbesWorkLouderCreatorMicroStudio.xcodeproj -scheme CreatorMicroStudio -destination 'platform=macOS' build`, and the `Inspector` scheme when changing its standalone app.
+- For one package test, add `--filter '<test-case-or-test-name>'` to the `swift test` command. Live tests against the device, Herdr, or GitButler are gated; only opt in deliberately with `CREATOR_MICRO_STUDIO_LIVE_TESTS=1`.
+- The stock keymap fixture is a SwiftPM test resource; access it with `Bundle.module`, not a path relative to `#filePath`.
+- `Pad.rows` is the firmware `[2, 4, 4, 3]` key matrix. UI drawings should use `Pad.physicalDisplayRows`, which also places the dial, joystick, and non-key case mark.
+- Every physical key can use every `KeyAction`; the default is Focus Agent. Keys 0–5 focus their assigned Herdr slot, and other keys return focus to the current Herdr agent. Key actions and prompt text are host-side config and must never rewrite the device keymap.
+- The Welcome splash uses the `StudioAppIcon` image set, generated from the same Pure Pad + ABE'S bezel artwork as both app icons and website favicons. Run `scripts/update-icons.sh` after an intentional final artwork change so they stay in sync.
+- To run the studio without hardware, set `WL_EMULATE=1` in the CreatorMicroStudio scheme's Run environment. The emulator is in that process; standalone Inspector still needs hardware.
+- Bundle IDs use `dev.abeisonai.worklouder.*`; changing them resets macOS permissions such as Input Monitoring and Accessibility.
+- Hardware work needs macOS Input Monitoring for the specific app bundle and non-exclusive HID access. The sidebar Inspector shares Studio's process and grant; the embedded standalone Inspector helper has its own bundle ID and grant. Pause the Studio bridge before opening the standalone helper. Xcode Run schemes stop the other project app first; also quit Work Louder Input and Codex desktop because they can overwrite pad lighting. Firmware may return `{"ok":1}` for malformed writes, so verify LEDs/read back keymaps; keymap writes consume flash. See `docs/hacking.md` before changing the HID protocol.
+- `scripts/update-icons.sh` regenerates both app icon catalogs, the Welcome `StudioAppIcon` image set, and website favicons from the shared artwork. `scripts/archive.sh` creates a signed Release archive; outputs are under ignored `.build/`.
