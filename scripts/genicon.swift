@@ -1,8 +1,11 @@
 // Draws the selected pad-plus-Abe's-bezel-engraving app-icon artwork. The generated PNGs can be used
 // to populate an iconset; this script only writes to the requested output path.
 //
-//   swift scripts/genicon.swift <output.iconset>
+//   swift scripts/genicon.swift <output.iconset> [--dev]
 //
+// `--dev` adds the DEV badge used by Debug builds, so the development app is
+// distinguishable from the installed stable one in Finder, the Dock and
+// System Settings.
 // Emits the ten PNGs `iconutil -c icns` expects.
 
 import AppKit
@@ -251,6 +254,44 @@ func draw(in ctx: CGContext) {
 
     // Fine, low-contrast engraving on the physical top bezel, away from keys.
     drawBezelEngraving(in: pad, inset: inset, ctx: ctx)
+
+    if devBadge { drawDevBadge(in: background, ctx: ctx) }
+}
+
+/// A bold ribbon across the bottom of the icon field: legible down to 32 px.
+func drawDevBadge(in background: CGRect, ctx: CGContext) {
+    let badge = CGRect(
+        x: background.minX + background.width * 0.16,
+        y: background.minY - background.height * 0.02,
+        width: background.width * 0.68,
+        height: background.height * 0.24
+    )
+    let path = roundedRect(badge, radius: badge.height / 2)
+    ctx.saveGState()
+    ctx.setShadow(offset: CGSize(width: 0, height: -6), blur: 14, color: cgColor(0x030711, alpha: 0.55))
+    ctx.addPath(path)
+    ctx.setFillColor(cgColor(0xE98B2F))
+    ctx.fillPath()
+    ctx.restoreGState()
+    fillGradient(path, in: badge, top: 0xF5B54A, bottom: 0xE0662B, ctx: ctx)
+    ctx.addPath(path)
+    ctx.setStrokeColor(cgColor(0xFFFFFF, alpha: 0.55))
+    ctx.setLineWidth(6)
+    ctx.strokePath()
+
+    let fontSize = badge.height * 0.62
+    let font = CTFontCreateWithName("AvenirNext-Heavy" as CFString, fontSize, nil)
+    let attributes: [NSAttributedString.Key: Any] = [
+        NSAttributedString.Key(kCTFontAttributeName as String): font,
+        NSAttributedString.Key(kCTForegroundColorAttributeName as String): cgColor(0x1A1206),
+        NSAttributedString.Key(kCTKernAttributeName as String): fontSize * 0.12,
+    ]
+    let line = CTLineCreateWithAttributedString(NSAttributedString(string: "DEV", attributes: attributes))
+    var ascent: CGFloat = 0
+    var descent: CGFloat = 0
+    let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, nil))
+    ctx.textPosition = CGPoint(x: badge.midX - width / 2, y: badge.midY - (ascent - descent) / 2)
+    CTLineDraw(line, ctx)
 }
 
 func writePNG(size: Int, scale: Int, to url: URL) {
@@ -278,11 +319,14 @@ func writePNG(size: Int, scale: Int, to url: URL) {
     try! data.write(to: url)
 }
 
-guard CommandLine.arguments.count == 2 else {
-    FileHandle.standardError.write(Data("usage: genicon.swift <output.iconset>\n".utf8))
+let arguments = Array(CommandLine.arguments.dropFirst())
+let devBadge = arguments.contains("--dev")
+let paths = arguments.filter { $0 != "--dev" }
+guard paths.count == 1 else {
+    FileHandle.standardError.write(Data("usage: genicon.swift <output.iconset> [--dev]\n".utf8))
     exit(1)
 }
-let out = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+let out = URL(fileURLWithPath: paths[0], isDirectory: true)
 try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
 
 for size in [16, 32, 128, 256, 512] {

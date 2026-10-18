@@ -113,12 +113,70 @@ public final class WLDevice {
     private var inputBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: reportSize)
     private var rpcAccumulator = ""
     private var debugAccumulator = ""
-    private var pending: [Int: (Any?, String?) -> Void] = [:]
+    /// Waiting completions by call id. The token tells a call apart from a
+    /// later one that reused its id (ids wrap below 1000), so a stale timer
+    /// can never fail the wrong call.
+    private var pending: [Int: Pending] = [:]
     private var nextID = 1
+    private var nextToken = 1
 
-    public var isConnected: Bool { device != nil || emulatedConnected }
+    private struct Pending {
+        let token: Int
+        let done: (Any?, String?) -> Void
+    }
+
+    /// How long the firmware gets to answer once a message has been sent,
+    /// unless a call says otherwise. `fs.write` makes it parse the file and
+    /// write flash; `fs.read` returns a few KB over ~45 reports.
+    public static func defaultTimeout(for method: String) -> TimeInterval {
+        switch method {
+        case "fs.write": return 30
+        case "fs.read": return 15
+        default: return 8
+        }
+    }
+
+    /// The outer cap's allowance per report still to be written — this
+    /// call's and any queued ahead of it. Over Bluetooth LE each
+    /// `IOHIDDeviceSetReport` waits for an acknowledgement (15–60 ms, more
+    /// when the pad has just woken), so this is generous on purpose: it only
+    /// exists so a wedged write queue still fails the call.
+    var perReportAllowance: TimeInterval = 0.5
+    /// Reports queued on `writeQueue` and not yet attempted. Main only.
+    private var queuedReports = 0
+
+    /// Writes one 64-byte output report. Runs on `writeQueue`, never main.
+    typealias ReportWriter = ([UInt8]) -> IOReturn
+    /// Set while a hardware (or test) connection is open.
+    private var writer: ReportWriter?
+    /// `IOHIDDeviceSetReport` blocks until the report is on the wire, which
+    /// over Bluetooth LE is milliseconds per report — and a full paint is
+    /// 15–20 of them. Every write goes through this serial queue so the main
+    /// thread never waits on the radio, and messages stay in call order.
+    private let writeQueue = DispatchQueue(label: "dev.abeisonai.worklouder.hid-write", qos: .userInitiated)
+    /// Bumped on every connect and disconnect. Writes queued for an earlier
+    /// connection are skipped, and their failures are not reported.
+    private let writeGate = WriteGate()
+
+    public var isConnected: Bool { writer != nil || emulatedConnected }
 
     public init(emulator: PadEmulator? = nil) { self.emulator = emulator }
+
+    /// What macOS has recorded for this app's Input Monitoring grant.
+    public enum InputMonitoringAccess: Equatable {
+        case granted
+        /// No decision yet: requesting shows the system "Keystroke Receiving" sheet.
+        case undetermined
+        /// Denied, or recorded for an earlier build's signature. macOS will not
+        /// show its sheet again until the record is reset or changed in Settings.
+        case denied
+    }
+
+    public static var inputMonitoringAccess: InputMonitoringAccess {
+        if hasInputMonitoringAccess { return .granted }
+        return IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeDenied
+            ? .denied : .undetermined
+    }
 
     /// Whether this process has the Input Monitoring grant needed for HID input.
     public static var hasInputMonitoringAccess: Bool {
@@ -193,6 +251,12 @@ public final class WLDevice {
         guard result == kIOReturnSuccess else { throw Failure.openFailed(result) }
 
         device = dev
+        writeGate.advance()
+        writer = { report in
+            report.withUnsafeBufferPointer { buf in
+                IOHIDDeviceSetReport(dev, kIOHIDReportTypeOutput, CFIndex(WLDevice.reportID), buf.baseAddress!, buf.count)
+            }
+        }
         info = Info(
             product: string(dev, kIOHIDProductKey) ?? "Work Louder device",
             productID: number(dev, kIOHIDProductIDKey) ?? 0,
@@ -216,7 +280,12 @@ public final class WLDevice {
             DispatchQueue.main.async { me.disconnect(reason: "device removed") }
         }, context)
 
-        IOHIDDeviceScheduleWithRunLoop(dev, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        // Common modes, not just the default one: while a menu or a modal
+        // sheet is up the main run loop runs in event-tracking mode, and
+        // replies (and key presses) parked until it closes would let the
+        // reply timers — which run in common modes — fire on answers that had
+        // already arrived.
+        IOHIDDeviceScheduleWithRunLoop(dev, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
     }
 
     public func disconnect(reason: String?) {
@@ -225,32 +294,70 @@ public final class WLDevice {
             emulatedConnected = false
             emulator?.onNotify = nil
             info = nil
-            for (_, done) in pending { done(nil, "disconnected") }
-            pending.removeAll()
+            failAllPending("disconnected")
             if let reason { onDisconnect?(reason) }
             return
         }
-        guard let dev = device else { return }
-        IOHIDDeviceUnscheduleFromRunLoop(dev, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
-        IOHIDDeviceClose(dev, IOOptionBits(kIOHIDOptionsTypeNone))
+        guard writer != nil else { return }
+        // Messages not yet started for this connection are dropped from here
+        // on; one already being written is finished (see `call`).
+        writeGate.advance()
+        writer = nil
+        let dev = device
+        let mgr = manager
         device = nil
-        if let mgr = manager {
-            IOHIDManagerClose(mgr, IOOptionBits(kIOHIDOptionsTypeNone))
-            manager = nil
+        manager = nil
+        if let dev {
+            IOHIDDeviceUnscheduleFromRunLoop(dev, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
+        }
+        // Close behind the queued writes, so a report already inside
+        // IOHIDDeviceSetReport never races the close of its device.
+        if dev != nil || mgr != nil {
+            writeQueue.async {
+                if let dev { IOHIDDeviceClose(dev, IOOptionBits(kIOHIDOptionsTypeNone)) }
+                if let mgr { IOHIDManagerClose(mgr, IOOptionBits(kIOHIDOptionsTypeNone)) }
+            }
         }
         info = nil
         rpcAccumulator = ""
         debugAccumulator = ""
-        for (_, done) in pending { done(nil, "disconnected") }
-        pending.removeAll()
+        queuedReports = 0
+        failAllPending("disconnected")
         if let reason { onDisconnect?(reason) }
+    }
+
+    private func failAllPending(_ message: String) {
+        let waiting = pending.values.sorted { $0.token < $1.token }
+        pending.removeAll()
+        for entry in waiting { entry.done(nil, message) }
+    }
+
+    /// Removes and returns the completion for `id`, only if it still
+    /// belongs to the call that issued `token`.
+    private func takePending(_ id: Int, token: Int) -> ((Any?, String?) -> Void)? {
+        guard let entry = pending[id], entry.token == token else { return nil }
+        pending.removeValue(forKey: id)
+        return entry.done
     }
 
     // MARK: - Send
 
+    /// Sends one JSON-RPC message.
+    ///
+    /// `timeout` (default `defaultTimeout(for:)`) counts from when the
+    /// message's last report has been written, not from when it was queued:
+    /// over Bluetooth LE a ~45-report `fs.write` can take seconds just to
+    /// send, and that must not eat the firmware's time to parse, write flash
+    /// and reply. A separate outer cap, armed at queue time, still fails the
+    /// call if the write queue itself never gets to it.
     @discardableResult
-    public func call(_ method: String, params: Any?, completion: ((Any?, String?) -> Void)? = nil) -> Int? {
-        guard emulatedConnected || device != nil else {
+    public func call(
+        _ method: String,
+        params: Any?,
+        timeout: TimeInterval? = nil,
+        completion: ((Any?, String?) -> Void)? = nil
+    ) -> Int? {
+        guard emulatedConnected || writer != nil else {
             completion?(nil, Failure.notConnected.errorDescription)
             return nil
         }
@@ -273,7 +380,7 @@ public final class WLDevice {
             return id
         }
 
-        guard let dev = device else {
+        guard let writer else {
             completion?(nil, Failure.notConnected.errorDescription)
             return nil
         }
@@ -286,7 +393,72 @@ public final class WLDevice {
             return nil
         }
 
-        let payload = [UInt8](data)
+        let reports = WLDevice.reports(for: [UInt8](data))
+        let replyTimeout = timeout ?? WLDevice.defaultTimeout(for: method)
+        let token = nextToken
+        nextToken &+= 1
+        let timeoutText = Failure.timeout(method).errorDescription
+
+        // Registered before the write is even queued: the reply is handled on
+        // main, so it can never overtake this, and the contention check in
+        // the bridge needs the id issued before any answer arrives. A reply
+        // that lands before the reply timer is armed simply finds nothing to
+        // arm it for.
+        onTX?(method, params, id)
+        if let completion {
+            pending[id] = Pending(token: token, done: completion)
+            let backlog = queuedReports + reports.count
+            let cap = replyTimeout + Double(backlog) * perReportAllowance
+            DispatchQueue.main.asyncAfter(deadline: .now() + cap) { [weak self] in
+                guard let self, let waiting = self.takePending(id, token: token) else { return }
+                waiting(nil, timeoutText)
+            }
+        }
+        queuedReports += reports.count
+
+        let generation = writeGate.current
+        let gate = writeGate
+        let count = reports.count
+        writeQueue.async { [weak self] in
+            // Disconnected (or reconnected) since this was queued: the
+            // pending completion has already been told. Checked once per
+            // message, never between its reports: half a JSON object would
+            // leave the firmware's brace scanner unbalanced and swallow the
+            // next connection's first message.
+            guard gate.current == generation else { return }
+            for report in reports {
+                let rc = writer(report)
+                guard rc == kIOReturnSuccess else {
+                    // Surface the failure rather than dropping it: a silent
+                    // write error is indistinguishable from a device that
+                    // ignores you. The rest of this message is not sent.
+                    let text = Failure.writeFailed(rc).errorDescription ?? "write failed"
+                    DispatchQueue.main.async {
+                        guard let self, gate.current == generation else { return }
+                        self.queuedReports = max(0, self.queuedReports - count)
+                        self.onWriteError?(method, text)
+                        if let waiting = self.takePending(id, token: token) { waiting(nil, text) }
+                    }
+                    return
+                }
+            }
+            // Every report is on the wire: now the firmware's clock starts.
+            DispatchQueue.main.async {
+                guard let self, gate.current == generation else { return }
+                self.queuedReports = max(0, self.queuedReports - count)
+                guard self.pending[id]?.token == token else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + replyTimeout) { [weak self] in
+                    guard let self, let waiting = self.takePending(id, token: token) else { return }
+                    waiting(nil, timeoutText)
+                }
+            }
+        }
+        return id
+    }
+
+    /// Splits one encoded message into channel-framed 64-byte reports.
+    static func reports(for payload: [UInt8]) -> [[UInt8]] {
+        var reports: [[UInt8]] = []
         var offset = 0
         while offset < payload.count {
             let n = min(WLDevice.maxChunk, payload.count - offset)
@@ -295,31 +467,30 @@ public final class WLDevice {
             report[1] = WLDevice.channelRPC
             report[2] = UInt8(n)
             report.replaceSubrange(3..<(3 + n), with: payload[offset..<(offset + n)])
-
-            let rc = report.withUnsafeBufferPointer { buf in
-                IOHIDDeviceSetReport(dev, kIOHIDReportTypeOutput, CFIndex(WLDevice.reportID), buf.baseAddress!, buf.count)
-            }
-            guard rc == kIOReturnSuccess else {
-                // Surface the failure rather than dropping it: a silent write
-                // error is indistinguishable from a device that ignores you.
-                let message = Failure.writeFailed(rc).errorDescription ?? "write failed"
-                onWriteError?(method, message)
-                completion?(nil, message)
-                return nil
-            }
+            reports.append(report)
             offset += n
         }
+        return reports
+    }
 
-        onTX?(method, params, id)
+    /// For tests: behave as a connected hardware device whose reports go to
+    /// `writer` (called on the write queue). Responses can be fed with
+    /// `receiveForTesting(_:)`.
+    func connectForTesting(writer: @escaping ReportWriter) {
+        disconnect(reason: nil)
+        writeGate.advance()
+        self.writer = writer
+    }
 
-        if let completion {
-            pending[id] = completion
-            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
-                guard let self, let waiting = self.pending.removeValue(forKey: id) else { return }
-                waiting(nil, Failure.timeout(method).errorDescription)
-            }
-        }
-        return id
+    /// For tests: hands one input report to the parser, as the HID input
+    /// callback would.
+    func receiveForTesting(_ bytes: [UInt8]) {
+        handleReport(bytes, reportID: UInt32(WLDevice.reportID))
+    }
+
+    /// Waits until every write queued so far has been attempted.
+    func flushWritesForTesting() {
+        writeQueue.sync {}
     }
 
     // MARK: - Receive
@@ -371,7 +542,7 @@ public final class WLDevice {
                 let error = (decoded["error"] as? [String: Any])?["message"] as? String
                 let result = decoded["result"]
                 onResponse?(id, result, error)
-                if let waiting = pending.removeValue(forKey: id) { waiting(result, error) }
+                if let waiting = pending.removeValue(forKey: id) { waiting.done(result, error) }
             } else if let method = (decoded["m"] as? String) ?? (decoded["method"] as? String) {
                 // Device-pushed notification. Note the envelope is abbreviated
                 // here - {"m": method, "p": params} - while responses use the
@@ -417,6 +588,19 @@ public final class WLDevice {
     }
 
     // MARK: - Properties
+
+    /// A connection generation readable from the write queue.
+    private final class WriteGate: @unchecked Sendable {
+        private var value = 0
+        private let lock = NSLock()
+        var current: Int { lock.lock(); defer { lock.unlock() }; return value }
+        @discardableResult
+        func advance() -> Int {
+            lock.lock(); defer { lock.unlock() }
+            value &+= 1
+            return value
+        }
+    }
 
     private func string(_ dev: IOHIDDevice, _ key: String) -> String? {
         IOHIDDeviceGetProperty(dev, key as CFString) as? String

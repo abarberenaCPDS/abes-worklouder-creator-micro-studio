@@ -73,7 +73,7 @@ final class VoiceController {
             switch self {
             case .accessibilityDenied:
                 return "Pressing right command needs the Accessibility permission: "
-                    + "System Settings → Privacy & Security → Accessibility → Abe's WorkLouder Creator Micro Studio."
+                    + "System Settings → Privacy & Security → Accessibility → \(AppIdentity.displayName)."
             case .eventFailed:
                 return "Could not synthesise the right command key press."
             }

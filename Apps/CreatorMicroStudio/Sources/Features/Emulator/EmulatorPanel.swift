@@ -5,9 +5,9 @@ import CreatorMicroStudioKit
 /// A window showing the virtual pad: the lights the bridge is driving, and
 /// keys you can press back at it.
 ///
-/// It is a plain resizable window rather than one of the floating panels,
-/// because unlike the stack or land views this one is meant to be clicked, sat
-/// beside your editor, and left open.
+/// It is a plain resizable window rather than a floating panel, because
+/// unlike the model panel this one is meant to be clicked, sat beside your
+/// editor, and left open.
 @MainActor
 final class EmulatorWindowController: NSObject, NSWindowDelegate {
     static let shared = EmulatorWindowController()
@@ -151,11 +151,17 @@ struct EmulatorView: View {
                 .fill(Color.white.opacity(0.75))
                 .frame(width: 3, height: 8)
                 .offset(y: -13)
-            HStack(spacing: 7) {
+            HStack(spacing: 4) {
                 Button { emulator.press(Pad.dialDownID) } label: {
                     Image(systemName: "arrow.counterclockwise")
                 }
                 .help("Rotate counter-clockwise")
+                Button { emulator.press(Pad.dialPushID) } label: {
+                    Image(systemName: "smallcircle.filled.circle")
+                }
+                .help(emulator.bound.contains(Pad.dialPushID)
+                      ? "Push the dial"
+                      : "Push the dial — not bound yet, so it sends play/pause instead")
                 Button { emulator.press(Pad.dialUpID) } label: {
                     Image(systemName: "arrow.clockwise")
                 }

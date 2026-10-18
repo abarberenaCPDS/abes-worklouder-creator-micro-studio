@@ -78,7 +78,7 @@ final class TunePanelController {
         let pad = String(models.count).count
         let rows = models.enumerated().map { index, name -> String in
             let number = String(index + 1)
-            let text = AnsiHTML.escapeHTML(
+            let text = HTMLText.escape(
                 (index == current ? "▸ " : "  ")
                 + String(repeating: " ", count: pad - number.count) + number
                 + "  " + name

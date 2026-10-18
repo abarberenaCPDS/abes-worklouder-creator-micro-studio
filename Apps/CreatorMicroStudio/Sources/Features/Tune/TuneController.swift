@@ -1,17 +1,19 @@
 import Foundation
 import CreatorMicroStudioKit
 
-/// The dial and joystick: effort and model for whichever agent has focus.
+/// The model and effort actions: effort and model for whichever agent has
+/// focus. By default the dial steps effort and the joystick works the model
+/// list, but any input can be bound to any of these through `config.json`.
 ///
 /// Claude Code takes orders directly — `/effort <level>` and `/model <name>`
-/// are commands, so the dial climbs an effort ladder and the joystick cycles
-/// a model list, both configurable. Codex has bindable effort commands but
-/// only a picker for models, so its dial sends the chords bound in
-/// `[tui.keymap]` and its joystick drives the `/model` picker: north opens
-/// it, north/south move, east confirms, west cancels.
+/// are commands, so effort climbs a ladder and models cycle a list, both
+/// configurable. Codex has bindable effort commands but only a picker for
+/// models, so its effort steps send the chords bound in `[tui.keymap]` and its
+/// model steps drive the `/model` picker: the first step opens it, later steps
+/// move, confirm and cancel close it.
 ///
-/// Either way the joystick is working a list you cannot see from the pad, so
-/// every deflection also puts that list on screen — see `TunePanelController`.
+/// Either way the model list is one you cannot see from the pad, so every
+/// model step also puts that list on screen — see `TunePanelController`.
 @MainActor
 final class TuneController {
 
@@ -32,20 +34,35 @@ final class TuneController {
     private var claudeEffortIndex: [String: Int] = [:]
     private var claudeModelIndex: [String: Int] = [:]
 
-    /// The codex pane whose `/model` picker we opened, if any. Deflections
+    /// The codex pane whose `/model` picker we opened, if any. Model steps
     /// steer the picker only while this is fresh; a stale entry means the
     /// picker was dealt with by hand.
     private var codexPickerPane: String?
     private var codexPickerOpened: Date?
     private static let pickerLifetime: TimeInterval = 30
 
-    // MARK: - Dial: effort
+    // MARK: - Entry point
 
-    func handleDial(_ step: Int) {
-        Task { await dial(step) }
+    /// The bridge's `onTune` callback.
+    func handle(_ command: TuneCommand) {
+        switch command {
+        case .effortUp: stepEffort(1)
+        case .effortDown: stepEffort(-1)
+        case .modelNext: stepModel(1)
+        case .modelPrevious: stepModel(-1)
+        case .pickerConfirm: confirmPicker()
+        case .pickerCancel: cancelPicker()
+        }
     }
 
-    private func dial(_ step: Int) async {
+    // MARK: - Effort
+
+    /// +1 for more effort, -1 for less.
+    func stepEffort(_ step: Int) {
+        Task { await effort(step) }
+    }
+
+    private func effort(_ step: Int) async {
         guard let (agent, pane) = await focusedPane() else { return }
         let kind = agent.agent.lowercased()
         do {
@@ -74,20 +91,32 @@ final class TuneController {
         max(0, min(count - 1, index + step))
     }
 
-    // MARK: - Joystick: model
+    // MARK: - Model
 
-    func handleJoystick(_ direction: Pad.JoystickDirection) {
-        Task { await joystick(direction) }
+    /// +1 for the next model down the list, -1 for the one above.
+    func stepModel(_ step: Int) {
+        Task { await model(step) }
     }
 
-    private func joystick(_ direction: Pad.JoystickDirection) async {
+    /// Confirms an open Codex picker. Claude switches on every step, so it
+    /// has nothing to confirm.
+    func confirmPicker() {
+        Task { await closePicker(confirm: true) }
+    }
+
+    /// Cancels an open Codex picker.
+    func cancelPicker() {
+        Task { await closePicker(confirm: false) }
+    }
+
+    private func model(_ step: Int) async {
         guard let (agent, pane) = await focusedPane() else { return }
         let kind = agent.agent.lowercased()
         do {
             if kind.contains("claude") {
-                try await claudeModel(direction, pane: pane, agent: agent.shortName)
+                try await claudeModel(step, pane: pane, agent: agent.shortName)
             } else if kind.contains("codex") {
-                try await codexModel(direction, pane: pane, agent: agent.shortName)
+                try await codexModel(step, pane: pane, agent: agent.shortName)
             } else {
                 onError?("No model control for \(agent.agent).")
             }
@@ -98,19 +127,10 @@ final class TuneController {
 
     /// Models cycle with wraparound — unlike effort, a list of names has no
     /// natural top or bottom.
-    private func claudeModel(
-        _ direction: Pad.JoystickDirection,
-        pane: String,
-        agent: String
-    ) async throws {
+    private func claudeModel(_ step: Int, pane: String, agent: String) async throws {
         let models = bindings().claudeModels
-        let step: Int
-        switch direction {
-        case .north: step = -1
-        case .south: step = 1
-        case .east, .west: return
-        }
-        let index = ((claudeModelIndex[pane] ?? 0) + step + models.count) % models.count
+        guard !models.isEmpty else { return }
+        let index = ((claudeModelIndex[pane] ?? 0) + step % models.count + models.count) % models.count
         claudeModelIndex[pane] = index
         // Up before the command goes out: the panel is the answer to "what did
         // I just land on", and waiting for the TUI to echo would show it late.
@@ -118,46 +138,45 @@ final class TuneController {
             models,
             current: index,
             agent: agent,
-            hint: "north and south cycle the list"
+            hint: "next and previous model cycle the list"
         )
         try await send(command: "/model \(models[index])", to: pane)
     }
 
-    private func codexModel(
-        _ direction: Pad.JoystickDirection,
-        pane: String,
-        agent: String
-    ) async throws {
-        let pickerOpen = codexPickerPane == pane
+    private var codexPickerIsOpen: Bool {
+        codexPickerPane != nil
             && Date().timeIntervalSince(codexPickerOpened ?? .distantPast) < Self.pickerLifetime
+    }
 
-        guard pickerOpen else {
-            // Any vertical deflection opens the picker; the rest is steering.
-            guard direction == .north || direction == .south else { return }
+    private func codexModel(_ step: Int, pane: String, agent: String) async throws {
+        guard codexPickerIsOpen, codexPickerPane == pane else {
+            // The first step opens the picker; the rest is steering.
             try await send(command: "/model", to: pane)
             codexPickerPane = pane
             codexPickerOpened = Date()
             showCodexModels(agent: agent)
             return
         }
-
-        switch direction {
-        case .north:
-            try await HerdrClient.sendKeys(paneID: pane, keys: ["up"])
-            showCodexModels(agent: agent)
-        case .south:
-            try await HerdrClient.sendKeys(paneID: pane, keys: ["down"])
-            showCodexModels(agent: agent)
-        case .east:
-            try await HerdrClient.sendKeys(paneID: pane, keys: ["enter"])
-            codexPickerPane = nil
-            TunePanelController.shared.hide()
-        case .west:
-            try await HerdrClient.sendKeys(paneID: pane, keys: ["esc"])
-            codexPickerPane = nil
-            TunePanelController.shared.hide()
-        }
+        try await HerdrClient.sendKeys(paneID: pane, keys: [step < 0 ? "up" : "down"])
         codexPickerOpened = Date()
+        showCodexModels(agent: agent)
+    }
+
+    private func closePicker(confirm: Bool) async {
+        // Only a picker this controller opened, in the pane that still has
+        // focus, is ours to close.
+        guard codexPickerIsOpen, let pane = codexPickerPane else { return }
+        guard let (_, focused) = await focusedPane(), focused == pane else {
+            codexPickerPane = nil
+            return
+        }
+        do {
+            try await HerdrClient.sendKeys(paneID: pane, keys: [confirm ? "enter" : "esc"])
+        } catch {
+            onError?(error.localizedDescription)
+        }
+        codexPickerPane = nil
+        TunePanelController.shared.hide()
     }
 
     /// Codex's picker is its own; we push arrow keys at it without being told
@@ -168,7 +187,7 @@ final class TuneController {
             bindings().codexModels,
             current: nil,
             agent: agent,
-            hint: "north and south move · east confirms · west cancels"
+            hint: "next/previous model move · confirm and cancel close the picker"
         )
     }
 

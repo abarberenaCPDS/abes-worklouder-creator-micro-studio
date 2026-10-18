@@ -1,4 +1,5 @@
 import AppKit
+import CreatorMicroStudioKit
 import ServiceManagement
 import SwiftUI
 
@@ -38,7 +39,13 @@ final class WelcomeWindowController: NSObject, NSWindowDelegate {
                 self?.window?.close()
                 StudioWindowController.shared.show(runtime: .shared)
             },
-            onDismiss: { [weak self] in self?.window?.close() }
+            onDismiss: { [weak self] in self?.window?.close() },
+            onRequestInputMonitoring: {
+                StudioRuntimeCoordinator.shared.requestStudioInputMonitoringAccess()
+            },
+            onShowInputMonitoringHelp: {
+                StudioRuntimeCoordinator.shared.showInputMonitoringHelp()
+            }
         ))
         window.center()
         window.makeKeyAndOrderFront(nil)
@@ -52,16 +59,24 @@ final class WelcomeWindowController: NSObject, NSWindowDelegate {
 struct WelcomeView: View {
     let onOpenStudio: () -> Void
     let onDismiss: () -> Void
+    let onRequestInputMonitoring: () -> Void
+    let onShowInputMonitoringHelp: () -> Void
+    var checkAccess: () -> Bool = { WLDevice.hasInputMonitoringAccess }
+    var isEmulating: Bool = BridgeSettings.emulate
+    var version: String = AppIdentity.versionDescription
+    var iconName: String = AppIdentity.splashIconName
+
+    @State private var hasInputMonitoring = false
 
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                Image("StudioAppIcon")
+                Image(iconName)
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
                     .frame(width: 156, height: 156)
-                    .accessibilityLabel("Abe’s WorkLouder Creator Micro Studio app icon")
+                    .accessibilityLabel("\(AppIdentity.displayName) app icon")
 
                 Spacer().frame(height: 26)
 
@@ -78,6 +93,13 @@ struct WelcomeView: View {
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+
+                Spacer().frame(height: 14)
+
+                Text("Version \(version)")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(36)
@@ -106,6 +128,10 @@ struct WelcomeView: View {
 
                 Spacer(minLength: 4)
 
+                if !isEmulating {
+                    inputMonitoringCard
+                }
+
                 Label("Studio lives in your menu bar", systemImage: "menubar.rectangle")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -127,10 +153,51 @@ struct WelcomeView: View {
         }
         .frame(minWidth: 720, minHeight: 520)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            // Launch has already asked macOS; this only reflects the result.
+            hasInputMonitoring = checkAccess()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            hasInputMonitoring = checkAccess()
+        }
+    }
+
+    private var inputMonitoringCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if hasInputMonitoring {
+                Label("Input Monitoring is allowed", systemImage: "checkmark.circle.fill")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.green)
+            } else {
+                Label("Input Monitoring is needed", systemImage: "lock.fill")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.orange)
+                Text("Studio reads the pad through macOS Input Monitoring. Request Access asks macOS; if nothing appears, Show me how… names this app, shows where it is, and walks you through System Settings.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button("Request Access", action: onRequestInputMonitoring)
+                    Button("Show me how…", action: onShowInputMonitoringHelp)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
 #Preview("Splash Window · 760×560") {
-    WelcomeView(onOpenStudio: {}, onDismiss: {})
+    WelcomeView(onOpenStudio: {}, onDismiss: {},
+                onRequestInputMonitoring: {}, onShowInputMonitoringHelp: {},
+                checkAccess: { true }, isEmulating: false, version: "0.3.1 (7)")
+        .frame(width: 760, height: 560)
+}
+
+#Preview("Splash Window · Input Monitoring Needed") {
+    WelcomeView(onOpenStudio: {}, onDismiss: {},
+                onRequestInputMonitoring: {}, onShowInputMonitoringHelp: {},
+                checkAccess: { false }, isEmulating: false, version: "0.3.1 (7)")
         .frame(width: 760, height: 560)
 }

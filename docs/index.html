@@ -358,9 +358,9 @@
       <div class="cap agent" style="background:var(--green)">agent</div>
     </div>
     <div class="pad-row">
-      <div class="cap">stack</div>
+      <div class="cap">focus</div>
       <div class="cap">tabs</div>
-      <div class="cap">land</div>
+      <div class="cap">focus</div>
       <div class="cap">macro</div>
     </div>
     <div class="pad-row">
@@ -371,12 +371,12 @@
   </div>
 
   <ul>
-    <li><strong>Stack</strong> floats the GitButler stack for whichever agent has focus, without stealing the keyboard.</li>
+    <li><strong>Focus</strong> keys return to whichever agent Herdr has selected.</li>
     <li><strong>Tabs</strong> cycles the tabs of the focused Herdr window.</li>
-    <li><strong>Land</strong> lands the focused agent's branches, bottom first, after showing you the plan.</li>
     <li><strong>Voice</strong> taps right command, starting and stopping Superwhisper.</li>
     <li><strong>Macro</strong> keys type a string you configure into the agent's prompt.</li>
     <li>The <strong>dial</strong> tunes reasoning effort; the <strong>joystick</strong> switches model.</li>
+    <li>Every key, the dial and the joystick can be rebound to any action from Studio's <strong>Controls</strong> page.</li>
   </ul>
 
   <h2>Installing</h2>
@@ -415,11 +415,15 @@
     separate grant. Both apps provide a shortcut to review Input Monitoring in
     System Settings.
   </p>
-  <h2>Configure key values</h2>
+  <h2>Configure controls and lighting</h2>
   <p>
-    The Studio's <strong>Edit key values</strong> sheet shows each physical
-    key's current action and lets you remap actions or edit prompt text. Changes
-    are stored in <code>config.json</code> and never rewrite the device keymap
+    The Studio's <strong>Controls</strong> page lets you give any key, the
+    dial (turn and push) or the joystick any action: focus an agent, drive
+    Herdr tabs and panes, submit a prompt, scroll, press a shortcut or media
+    key, open a URL or run a shell command. <strong>Lighting</strong> keeps
+    the underglow, backlight, status colours and fixed key colours, and
+    <strong>Herdr</strong> shows how the pad maps onto your agents. Changes are
+    stored in <code>config.json</code> and never rewrite the device keymap
     or consume flash.
   </p>
 

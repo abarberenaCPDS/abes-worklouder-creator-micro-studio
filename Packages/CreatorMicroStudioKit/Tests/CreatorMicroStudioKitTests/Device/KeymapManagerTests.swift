@@ -47,7 +47,7 @@ final class KeymapManagerTests: XCTestCase {
         }
     }
 
-    /// A pad bound the old way — six agent keys, stack key still on its F-key —
+    /// A pad bound the old way — six agent keys, key 6 still on its F-key —
     /// has to report as *not* applied, or the rebind never happens.
     func testAgentOnlyKeymapIsNotConsideredApplied() throws {
         var config = try backupKeymap()
@@ -66,18 +66,55 @@ final class KeymapManagerTests: XCTestCase {
         XCTAssertTrue(KeymapManager.isAgentKeymapApplied(try KeymapManager.withAgentKeymap(config)))
     }
 
-    /// The dial's rotations become AG codes; its press keeps its keycode.
-    func testApplyingBindsTheDialButNotItsPress() throws {
+    /// The dial's rotations and its press all become AG codes; the press
+    /// takes AG19, the last free id.
+    func testApplyingBindsTheDialAndItsPress() throws {
         let config = try backupKeymap()
-        let next = try KeymapManager.withAgentKeymap(config)
-
         let original = try XCTUnwrap(KeymapManager.activeLayerLayout(config))
+        let originalDial = try XCTUnwrap((original["encoders"] as? [[String]])?.first)
+        XCTAssertEqual(originalDial[2], "KC_MPLY", "stock press is play/pause")
+
+        let next = try KeymapManager.withAgentKeymap(config)
         let layout = try XCTUnwrap(KeymapManager.activeLayerLayout(next))
         let dial = try XCTUnwrap((layout["encoders"] as? [[String]])?.first)
-        let originalDial = try XCTUnwrap((original["encoders"] as? [[String]])?.first)
-        XCTAssertEqual(dial[0], "KV_OAI_AG13")
-        XCTAssertEqual(dial[1], "KV_OAI_AG14")
-        XCTAssertEqual(dial[2], originalDial[2], "the press is not ours to take")
+        XCTAssertEqual(dial, ["KV_OAI_AG13", "KV_OAI_AG14", "KV_OAI_AG19"])
+    }
+
+    /// A pad bound by the previous build — rotations only — must read as not
+    /// applied, so it gets exactly one more write to take the press.
+    func testPadBoundWithoutThePressNeedsOneMoreWrite() throws {
+        var config = try KeymapManager.withAgentKeymap(try backupKeymap())
+        config = try replacingDial(in: config, with: ["KV_OAI_AG13", "KV_OAI_AG14", "KC_MPLY"])
+        XCTAssertFalse(KeymapManager.isAgentKeymapApplied(config))
+
+        let rebound = try KeymapManager.withAgentKeymap(config)
+        XCTAssertTrue(KeymapManager.isAgentKeymapApplied(rebound))
+        XCTAssertTrue(KeymapManager.isAgentKeymapApplied(try KeymapManager.withAgentKeymap(rebound)),
+                      "and none after that")
+    }
+
+    /// An encoder listed with only its two rotations gains the press slot.
+    func testTwoSlotEncoderGainsThePress() throws {
+        let config = try replacingDial(in: try backupKeymap(), with: ["KC_VOLU", "KC_VOLD"])
+        XCTAssertFalse(KeymapManager.isAgentKeymapApplied(config))
+        let next = try KeymapManager.withAgentKeymap(config)
+        let dial = try XCTUnwrap((KeymapManager.activeLayerLayout(next)?["encoders"] as? [[String]])?.first)
+        XCTAssertEqual(dial, ["KV_OAI_AG13", "KV_OAI_AG14", "KV_OAI_AG19"])
+        XCTAssertTrue(KeymapManager.isAgentKeymapApplied(next))
+    }
+
+    private func replacingDial(in config: [String: Any], with dial: [String]) throws -> [String: Any] {
+        var config = config
+        var profiles = try XCTUnwrap(config["profiles"] as? [[String: Any]])
+        var layers = try XCTUnwrap(profiles[0]["layers"] as? [[String: Any]])
+        var layout = try XCTUnwrap(layers[0]["layout"] as? [String: Any])
+        var encoders = try XCTUnwrap(layout["encoders"] as? [[String]])
+        encoders[0] = dial
+        layout["encoders"] = encoders
+        layers[0]["layout"] = layout
+        profiles[0]["layers"] = layers
+        config["profiles"] = profiles
+        return config
     }
 
     /// The joystick's four cardinal sectors become AG codes; diagonals keep
@@ -133,5 +170,47 @@ final class KeymapManagerTests: XCTestCase {
         XCTAssertThrowsError(try KeymapManager.parse(["nope": 1]))
         XCTAssertThrowsError(try KeymapManager.parse(["data": "not json"]))
         XCTAssertFalse(KeymapManager.isAgentKeymapApplied([:]))
+    }
+
+    // A pad profile set up in Work Louder's app with a two-sector joystick:
+    // up, and one sector covering everything else (it centres on down).
+    // Mirrors a real `fs.read` from firmware 0.6.3, where the active profile
+    // is found by its `id`.
+    private func twoSectorKeymap(dialPush: String = "KV_OAI_AG19") -> [String: Any] {
+        let keys = [["KV_OAI_AG00", "KV_OAI_AG01"],
+                    ["KV_OAI_AG02", "KV_OAI_AG03", "KV_OAI_AG04", "KV_OAI_AG05"],
+                    ["KV_OAI_AG06", "KV_OAI_AG07", "KV_OAI_AG08", "KV_OAI_AG09"],
+                    ["KV_OAI_AG10", "KV_OAI_AG11", "KV_OAI_AG12"]]
+        func layer(_ push: String) -> [String: Any] {
+            ["layout": ["keymap": keys,
+                        "joystick": ["type": "RADIAL", "sectors": [
+                            ["k": "KV_OAI_AG15", "a1": 0.1875, "a2": 0.3125],
+                            ["k": "KV_OAI_AG17", "a1": 0.3125, "a2": 0.1875],
+                        ]],
+                        "encoders": [["KV_OAI_AG13", "KV_OAI_AG14", push]]]]
+        }
+        return ["version": 1, "activeProfileId": 7, "profiles": [
+            ["id": 0, "layers": [layer("KC_NONE")]],
+            ["id": 7, "layers": [layer(dialPush)]],
+        ]]
+    }
+
+    func testTwoSectorJoystickIsFullyBoundAndReportsAbsentDirections() {
+        let config = twoSectorKeymap()
+        XCTAssertEqual(KeymapManager.missingBindings(config), [], "absent sectors are not missing bindings")
+        XCTAssertTrue(KeymapManager.isAgentKeymapApplied(config))
+        XCTAssertEqual(KeymapManager.absentJoystickInputs(config), [Pad.joyWestID, Pad.joyEastID].sorted())
+    }
+
+    func testActiveProfileIsFoundByItsID() {
+        // Profile id 7 sits at index 1; the dial push there is unbound.
+        let missing = KeymapManager.missingBindings(twoSectorKeymap(dialPush: "KC_MPLY"))
+        XCTAssertEqual(missing.map(\.inputID), [Pad.dialPushID])
+    }
+
+    func testFourSectorStockLayoutHasNoAbsentDirections() throws {
+        let url = try XCTUnwrap(Bundle.module.url(forResource: "stock-keymap", withExtension: "json", subdirectory: "Fixtures"))
+        let config = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        XCTAssertEqual(KeymapManager.absentJoystickInputs(config), [])
     }
 }

@@ -4,6 +4,9 @@ import CreatorMicroStudioKit
 
 enum StudioDestination: String, Identifiable, Hashable {
     case studio = "Studio"
+    case controls = "Controls"
+    case lighting = "Lighting"
+    case herdr = "Herdr"
     case inspector = "Inspector"
     case inputMonitoring = "Input Monitoring"
 
@@ -11,6 +14,9 @@ enum StudioDestination: String, Identifiable, Hashable {
     var symbol: String {
         switch self {
         case .studio: return "keyboard"
+        case .controls: return "slider.horizontal.below.square.and.square.filled"
+        case .lighting: return "lightbulb.led"
+        case .herdr: return "point.3.connected.trianglepath.dotted"
         case .inspector: return "waveform.path.ecg"
         case .inputMonitoring: return "hand.raised"
         }
@@ -66,6 +72,9 @@ final class StudioRuntimeCoordinator: ObservableObject {
                 self.standaloneInspectorPID = nil
                 let shouldResume = self.resumeStudioAfterStandaloneInspector
                 self.resumeStudioAfterStandaloneInspector = false
+                // The standalone Inspector may have saved looks to Studio's
+                // config file; pick them up even if the bridge stays off.
+                self.bridge.reloadConfiguration()
                 guard shouldResume, BridgeSettings.enabled else { return }
                 await self.bridge.useEmulator(BridgeSettings.emulate)
                 await self.bridge.start()
@@ -111,20 +120,42 @@ final class StudioRuntimeCoordinator: ObservableObject {
         await bridge.useEmulator(enabled)
     }
 
-    func openStudioInputMonitoringSettings() {
+    /// Raise the macOS Input Monitoring request for Studio and start the
+    /// bridge, which keeps retrying the pad until the grant takes effect.
+    /// When macOS shows nothing, the request opens the helper window.
+    func requestStudioInputMonitoringAccess() {
         guard !previewMode else { return }
-        let granted = WLDevice.requestInputMonitoringAccessIfNeeded()
-        if granted, BridgeSettings.enabled {
+        if processNeedsRelaunchForInputMonitoring {
+            // macOS already reports the grant, so it will show no request,
+            // but this process keeps its cached denial until it relaunches.
+            // The helper says so and offers Quit & Reopen.
+            PermissionHelperWindowController.shared.show(.inputMonitoring)
+        } else {
+            InputMonitoringPrompt.request()
+        }
+        if BridgeSettings.enabled {
             Task { await startIfNeeded() }
         }
-        openInputMonitoringPane()
+    }
+
+    /// Input Monitoring is allowed in System Settings, yet this process still
+    /// cannot open the pad: only a relaunch picks the grant up.
+    var processNeedsRelaunchForInputMonitoring: Bool {
+        bridge.permissionDenied && WLDevice.hasInputMonitoringAccess
+    }
+
+    /// The step-by-step helper: which app to allow, where it is, and the
+    /// buttons to get there.
+    func showInputMonitoringHelp() {
+        guard !previewMode else { return }
+        PermissionHelperWindowController.shared.show(.inputMonitoring)
     }
 
     func openStandaloneInspector() {
         guard !previewMode else { return }
         standaloneInspectorError = nil
         let running = NSWorkspace.shared.runningApplications.first {
-            $0.bundleIdentifier == "dev.abeisonai.worklouder.inspector"
+            $0.bundleIdentifier == AppIdentity.inspectorBundleIdentifier
         }
         let shouldResume = bridge.isRunning && BridgeSettings.enabled
 
@@ -138,8 +169,7 @@ final class StudioRuntimeCoordinator: ObservableObject {
                 return
             }
 
-            let appURL = Bundle.main.bundleURL
-                .appendingPathComponent("Contents/Library/AbesWorkLouderCreatorMicroStudioInspector.app")
+            let appURL = AppIdentity.inspectorAppURL
             guard FileManager.default.fileExists(atPath: appURL.path) else {
                 standaloneInspectorError = "The standalone Inspector helper is missing from this app bundle. Rebuild the CreatorMicroStudio scheme and try again."
                 await resumeStudioAfterStandaloneInspectorIfNeeded()
@@ -162,14 +192,10 @@ final class StudioRuntimeCoordinator: ObservableObject {
     private func resumeStudioAfterStandaloneInspectorIfNeeded() async {
         let shouldResume = resumeStudioAfterStandaloneInspector
         resumeStudioAfterStandaloneInspector = false
+        bridge.reloadConfiguration()
         guard shouldResume, BridgeSettings.enabled else { return }
         await bridge.useEmulator(BridgeSettings.emulate)
         await bridge.start()
-    }
-
-    private func openInputMonitoringPane() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") else { return }
-        NSWorkspace.shared.open(url)
     }
 
     func enterInspector() {
@@ -218,7 +244,9 @@ final class StudioRuntimeCoordinator: ObservableObject {
             return
         }
         guard isInspectorActive else {
-            inspectorRequiresHardware = false
+            // Runs on every page change: assign only on a change, so moving
+            // between ordinary pages publishes nothing.
+            if inspectorRequiresHardware { inspectorRequiresHardware = false }
             return
         }
         isInspectorActive = false
@@ -232,6 +260,9 @@ final class StudioRuntimeCoordinator: ObservableObject {
         transitionTask = Task { @MainActor in
             await previousTransition?.value
             inspectorModel.disconnect()
+            // Inspector edits are temporary; anything it saved to Studio is
+            // in config.json, so reload before Studio repaints the pad.
+            bridge.reloadConfiguration()
             if shouldResume, BridgeSettings.enabled {
                 await bridge.useEmulator(BridgeSettings.emulate)
                 await bridge.start()
@@ -243,18 +274,6 @@ final class StudioRuntimeCoordinator: ObservableObject {
     private func wireActions() {
         let bridge = self.bridge
 
-        let stack = StackPanelController.shared
-        stack.onVisibilityChange = { [weak bridge] open in
-            Task { await bridge?.setStackPanelOpen(open) }
-        }
-        bridge.onStackKey = { stack.toggle() }
-
-        let land = LandPanelController.shared
-        land.onVisibilityChange = { [weak bridge] open in
-            Task { await bridge?.setLandPanelOpen(open) }
-        }
-        bridge.onLandKey = { land.handleLandKey() }
-
         let voice = VoiceController.shared
         voice.onActiveChange = { [weak bridge] active in
             Task { await bridge?.setVoiceActive(active) }
@@ -265,11 +284,12 @@ final class StudioRuntimeCoordinator: ObservableObject {
         let tune = TuneController.shared
         tune.onError = { [weak bridge] message in bridge?.noteError(message) }
         tune.bindings = { [weak bridge] in bridge?.keyBindings ?? KeyBindings() }
-        bridge.onDial = { step in tune.handleDial(step) }
-        bridge.onJoystick = { direction in tune.handleJoystick(direction) }
-        bridge.onKeyIntercept = { index in
-            guard index != Pad.landKeyID else { return false }
-            return land.handleOtherKey()
+        bridge.onTune = { command in tune.handle(command) }
+
+        // A Herdr command's {ask:…} placeholders type into a small floating
+        // panel; nil cancels the action.
+        bridge.onAsk = { prompt, defaultText in
+            await HerdrAskPanel.shared.ask(prompt: prompt, defaultText: defaultText)
         }
     }
 }
@@ -294,16 +314,21 @@ final class StudioWindowController: NSObject, NSWindowDelegate {
         }
         let navigation = StudioNavigationState()
         navigation.selection = destination
+        // Open at 940 pt tall where there is room, but never taller than the
+        // screen below the menu bar (minus titlebar and toolbar), so the
+        // bottom of every page stays reachable on a 13" or 14" MacBook.
+        let visibleHeight = (NSScreen.main?.visibleFrame.height ?? 940) - 90
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1740, height: 940),
+            contentRect: NSRect(x: 0, y: 0, width: 1740, height: max(780, min(940, visibleHeight))),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.title = "Abe's WorkLouder Creator Micro Studio"
+        window.title = AppIdentity.displayName
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.titleVisibility = .visible
+        // Matches the SwiftUI minimum height; every page scrolls below it.
         window.contentMinSize = NSSize(width: 1400, height: 780)
         let hostingController = NSHostingController(rootView: StudioWindowView(
             runtime: runtime,
@@ -359,6 +384,9 @@ private struct StudioWindowView: View {
             List {
                 Section("Workspace") {
                     workspaceRow(.studio)
+                    workspaceRow(.controls)
+                    workspaceRow(.lighting)
+                    workspaceRow(.herdr)
                     workspaceRow(.inspector)
                 }
                 Section("Settings") {
@@ -381,10 +409,23 @@ private struct StudioWindowView: View {
             .disabled(runtime.isTransitioning)
             .navigationSplitViewColumnWidth(min: 240, ideal: 270, max: 310)
         } detail: {
+            // Pin each page to exactly the size the column offers. Left to
+            // itself the detail column sizes a page by its ideal height, and a
+            // List's ideal height is all of its rows: the page then grows
+            // taller than the window and AppKit centres it, which pushes the
+            // header, the sidebar and the top of the list out of view (a
+            // blank, "stuck" window).
+            GeometryReader { proxy in
             Group {
                 switch navigation.selection ?? .studio {
                 case .studio:
-                    StudioDashboardView(bridge: bridge, runtime: runtime)
+                    StudioDashboardView(bridge: bridge, runtime: runtime, navigation: navigation)
+                case .controls:
+                    ControlsView(bridge: bridge)
+                case .lighting:
+                    LightingView(bridge: bridge)
+                case .herdr:
+                    HerdrView(bridge: bridge)
                 case .inspector:
                     if runtime.inspectorRequiresHardware {
                         InspectorHardwareNotice()
@@ -401,8 +442,10 @@ private struct StudioWindowView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 case .inputMonitoring:
-                    InputMonitoringSettingsView(runtime: runtime)
+                    InputMonitoringSettingsView(runtime: runtime, bridge: runtime.bridge)
                 }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
             }
         }
         .frame(minWidth: 1200, minHeight: 780)
@@ -459,7 +502,7 @@ private struct StudioWindowView: View {
     }
 
     private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
+        AppIdentity.versionDescription
     }
 }
 
@@ -483,6 +526,7 @@ private struct InspectorHardwareNotice: View {
 
 private struct InputMonitoringSettingsView: View {
     @ObservedObject var runtime: StudioRuntimeCoordinator
+    @ObservedObject var bridge: BridgeController
     @State private var requestMessage: String?
 
     @State private var studioHasAccess = false
@@ -493,36 +537,27 @@ private struct InputMonitoringSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Input Monitoring")
                         .font(.largeTitle.weight(.bold))
-                    Text("Permission is managed by macOS per app. Request access here, then review or change either app’s setting in System Settings.")
+                    Text("Permission is managed by macOS per app. Request access here; if macOS shows nothing, Show me how… walks you through allowing it in System Settings.")
                         .font(.title3)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                permissionCard(
-                    title: "Abe’s WorkLouder Creator Micro Studio",
-                    subtitle: "Studio and the Inspector sidebar run in this app and share this grant.",
-                    isGranted: studioHasAccess,
-                    buttonTitle: studioHasAccess ? "Open System Settings…" : "Request access and open Settings…",
-                    symbol: "keyboard"
-                ) {
-                    requestMessage = nil
-                    runtime.openStudioInputMonitoringSettings()
-                    refreshStudioPermission()
-                    requestMessage = studioHasAccess
-                        ? "Studio Input Monitoring access is granted."
-                        : "Approve the macOS request if shown, then enable Studio in the Input Monitoring list."
-                }
+                studioCard
 
                 permissionCard(
-                    title: "Abe’s WorkLouder Creator Micro Studio Inspector",
+                    title: AppIdentity.inspectorDisplayName,
                     subtitle: "The standalone Inspector is a separate app and needs its own Input Monitoring grant. Launching it requests access from its own process.",
                     isGranted: nil,
-                    buttonTitle: "Launch standalone Inspector to request access",
                     symbol: "waveform.path.ecg"
                 ) {
-                    requestMessage = nil
-                    runtime.openStandaloneInspector()
+                    Button {
+                        requestMessage = nil
+                        runtime.openStandaloneInspector()
+                    } label: {
+                        Label("Launch standalone Inspector to request access", systemImage: "arrow.up.right.square")
+                    }
+                    .buttonStyle(.bordered)
                 }
 
                 if let error = runtime.standaloneInspectorError {
@@ -549,17 +584,61 @@ private struct InputMonitoringSettingsView: View {
         }
     }
 
+    private var studioCard: some View {
+        permissionCard(
+            title: AppIdentity.displayName,
+            subtitle: "Studio and the Inspector sidebar run in this app and share this grant.",
+            isGranted: studioHasAccess,
+            symbol: "keyboard"
+        ) {
+            AppIdentityCard()
+            if studioHasAccess, bridge.permissionDenied {
+                Label("Allowed in System Settings, but \(AppIdentity.shortName) still can't open the pad. Quit & Reopen so the grant takes effect.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                if studioHasAccess, bridge.permissionDenied {
+                    Button("Quit & Reopen") { PermissionHelperWindowController.quitAndReopen() }
+                        .buttonStyle(.borderedProminent)
+                    Button("Show me how…") { runtime.showInputMonitoringHelp() }
+                        .buttonStyle(.bordered)
+                } else if studioHasAccess {
+                    Button {
+                        InputMonitoringPrompt.openSettings()
+                    } label: {
+                        Label("Open System Settings…", systemImage: "arrow.up.right.square")
+                    }
+                    .buttonStyle(.bordered)
+                } else {
+                    Button("Request Access") {
+                        requestMessage = nil
+                        runtime.requestStudioInputMonitoringAccess()
+                        refreshStudioPermission()
+                        if !studioHasAccess {
+                            requestMessage = "If macOS shows its request, choose Open System Settings and turn \(AppIdentity.shortName) on. If it shows nothing, the helper opens with the steps."
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button("Show me how…") { runtime.showInputMonitoringHelp() }
+                        .buttonStyle(.bordered)
+                }
+            }
+        }
+    }
+
     private func refreshStudioPermission() {
         studioHasAccess = WLDevice.hasInputMonitoringAccess
     }
 
-    private func permissionCard(
+    private func permissionCard<Actions: View>(
         title: String,
         subtitle: String,
         isGranted: Bool?,
-        buttonTitle: String,
         symbol: String,
-        action: @escaping () -> Void
+        @ViewBuilder actions: () -> Actions
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 14) {
@@ -588,11 +667,7 @@ private struct InputMonitoringSettingsView: View {
                         .fixedSize()
                 }
             }
-            Button(action: action) {
-                Label(buttonTitle, systemImage: "arrow.up.right.square")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.bordered)
+            actions()
         }
         .padding(20)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
@@ -606,7 +681,7 @@ private struct InputMonitoringSettingsView: View {
 private struct StudioDashboardView: View {
     @ObservedObject var bridge: BridgeController
     @ObservedObject var runtime: StudioRuntimeCoordinator
-    @State private var editingKey = false
+    @ObservedObject var navigation: StudioNavigationState
 
     var body: some View {
         ScrollView {
@@ -639,11 +714,11 @@ private struct StudioDashboardView: View {
                         }
                         StudioPadMapView(bridge: bridge)
                         HStack {
-                            Text("Select a key to run its action. Edit values without writing to device flash.")
+                            Text("Select a key, the dial or the joystick to run its action. Actions are Studio settings and never write to device flash.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Button("Edit key values…") { editingKey = true }
+                            Button("Edit controls…") { navigation.selection = .controls }
                                 .buttonStyle(.bordered)
                         }
                     }
@@ -663,10 +738,6 @@ private struct StudioDashboardView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .sheet(isPresented: $editingKey) {
-            KeyActionEditorView(bridge: bridge)
-                .frame(width: 520, height: 430)
-        }
     }
 
     private var header: some View {
@@ -679,14 +750,54 @@ private struct StudioDashboardView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Label(runtime.isInspectorActive ? "Inspector active" : (bridge.permissionDenied ? "Permission needed" : (bridge.deviceConnected ? "Connected" : "Waiting")),
-                  systemImage: runtime.isInspectorActive ? "waveform.path.ecg" : "circle.fill")
-                .font(.callout.weight(.medium))
-                .foregroundStyle(runtime.isInspectorActive ? Color.accentColor : (bridge.permissionDenied ? .orange : (bridge.deviceConnected ? .green : .secondary)))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.regularMaterial, in: Capsule())
+            headerStatus
         }
+    }
+
+    /// A status with a fix is a button; a passive one is plain text with a
+    /// coloured dot, so it never looks clickable (HIG).
+    @ViewBuilder
+    private var headerStatus: some View {
+        if runtime.isInspectorActive {
+            passiveStatus("Inspector active", color: .accentColor, symbol: "waveform.path.ecg")
+        } else if bridge.permissionDenied {
+            Button {
+                navigation.selection = .inputMonitoring
+                runtime.requestStudioInputMonitoringAccess()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                    Text("Permission needed")
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                }
+                .font(.callout.weight(.medium))
+            }
+            .buttonStyle(.bordered)
+            .tint(.orange)
+            .controlSize(.large)
+            .help("Fix Input Monitoring…")
+            .accessibilityLabel("Input Monitoring permission needed")
+            .accessibilityHint("Opens the Input Monitoring page and asks macOS for access")
+        } else if bridge.deviceConnected {
+            passiveStatus("Connected", color: .green)
+        } else {
+            passiveStatus("Waiting for the pad", color: .secondary)
+        }
+    }
+
+    private func passiveStatus(_ title: String, color: Color, symbol: String? = nil) -> some View {
+        HStack(spacing: 7) {
+            if let symbol {
+                Image(systemName: symbol).foregroundStyle(color)
+            } else {
+                Circle().fill(color).frame(width: 9, height: 9)
+            }
+            Text(title).foregroundStyle(.secondary)
+        }
+        .font(.callout.weight(.medium))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Status: \(title)")
     }
 
     private var deviceCard: some View {
@@ -793,124 +904,6 @@ private struct StudioDashboardView: View {
     }
 }
 
-private struct KeyActionEditorView: View {
-    @ObservedObject var bridge: BridgeController
-    @Environment(\.dismiss) private var dismiss
-    @State private var key = 6
-    @State private var selectedAction: KeyAction = .defaultAction
-    @State private var macroText = ""
-    @State private var saveError: String?
-
-    private var canChooseAction: Bool { Pad.configurableActionKeyIDs.contains(key) }
-    private var effectiveAction: KeyAction {
-        canChooseAction && selectedAction != .defaultAction
-            ? selectedAction
-            : KeyAction.defaultAction(for: key)
-    }
-    private var editsPrompt: Bool {
-        effectiveAction == .macro || effectiveAction == .voice
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Key values")
-                        .font(.title2.weight(.semibold))
-                    Text("Change what the Studio sends when a physical key is pressed.")
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-            }
-
-            Form {
-                Picker("Physical key", selection: $key) {
-                    ForEach(Pad.configurableActionKeyIDs, id: \.self) { id in
-                        Text("Key \(id)").tag(id)
-                    }
-                }
-
-                if canChooseAction {
-                    Picker("Action", selection: $selectedAction) {
-                        Text("Default · \(KeyAction.defaultAction(for: key).title)")
-                            .tag(KeyAction.defaultAction)
-                        ForEach(KeyAction.configurable.filter { $0 != .defaultAction }) { action in
-                            Text(action.title).tag(action)
-                        }
-                    }
-                } else {
-                    LabeledContent("Action", value: effectiveAction.title)
-                }
-
-                if editsPrompt {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(effectiveAction == .voice ? "Optional prompt override" : "Prompt text")
-                            .font(.callout.weight(.medium))
-                        TextEditor(text: $macroText)
-                            .font(.body)
-                            .frame(minHeight: 110)
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.25)))
-                        Text("This text is inserted into the focused agent’s prompt without submitting it. Leave blank to use the built-in action.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if effectiveAction == .focusAgent, Pad.agentSlot(for: key) == nil {
-                    Text("This key returns focus to the agent already selected in Herdr. Keys 0–5 focus their corresponding agent slot.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .formStyle(.grouped)
-
-            if let saveError {
-                Text(saveError).font(.callout).foregroundStyle(.red)
-            }
-
-            HStack {
-                Text("Saved to config.json. No device keymap or flash write is made.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Save value") { save() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .onAppear(perform: loadSelection)
-        .onChange(of: key) { _ in loadSelection() }
-    }
-
-    private func loadSelection() {
-        let bindings = bridge.keyBindings
-        selectedAction = canChooseAction
-            ? (bindings.actionOverride(for: key) ?? .defaultAction)
-            : KeyAction.defaultAction(for: key)
-        macroText = bindings.text(for: key) ?? ""
-        saveError = nil
-    }
-
-    private func save() {
-        do {
-            if canChooseAction {
-                try KeyBindings.setAction(selectedAction, for: key)
-            }
-            if editsPrompt {
-                try KeyBindings.setText(macroText, for: key)
-            }
-            bridge.reloadKeyBindings()
-            dismiss()
-        } catch {
-            saveError = error.localizedDescription
-        }
-    }
-}
-
 private struct StudioPadMapView: View {
     @ObservedObject var bridge: BridgeController
     private let keyWidth: CGFloat = 120
@@ -981,9 +974,15 @@ private struct StudioPadMapView: View {
                 Button { bridge.handleKeyPress(Pad.dialDownID) } label: {
                     Image(systemName: "arrow.counterclockwise")
                 }
+                .help(inputDescription(Pad.dialDownID))
+                Button { bridge.handleKeyPress(Pad.dialPushID) } label: {
+                    Image(systemName: "smallcircle.filled.circle")
+                }
+                .help(inputDescription(Pad.dialPushID))
                 Button { bridge.handleKeyPress(Pad.dialUpID) } label: {
                     Image(systemName: "arrow.clockwise")
                 }
+                .help(inputDescription(Pad.dialUpID))
             }
             .font(.system(size: 13, weight: .semibold))
             .buttonStyle(.plain)
@@ -992,7 +991,6 @@ private struct StudioPadMapView: View {
         .frame(width: keyWidth, height: keyHeight)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Rotary dial")
-        .help("Turn the dial to adjust reasoning effort")
     }
 
     private var joystickControl: some View {
@@ -1010,7 +1008,6 @@ private struct StudioPadMapView: View {
         .frame(width: keyWidth, height: keyHeight)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Four-way joystick")
-        .help("Move the joystick to choose a model")
     }
 
     private func arrowButton(_ symbol: String, _ key: Int) -> some View {
@@ -1022,7 +1019,7 @@ private struct StudioPadMapView: View {
         }
         .buttonStyle(.plain)
         .disabled(!bridge.isRunning)
-        .help("Joystick direction")
+        .help(inputDescription(key))
     }
 
     private var caseMark: some View {
@@ -1038,26 +1035,23 @@ private struct StudioPadMapView: View {
         if action == .focusAgent,
            let slot = Pad.agentSlot(for: key), slot < bridge.agents.count {
             let agent = bridge.agents[slot]
-            return "Key \(key), \(agent.shortName), \(agent.status)"
+            return "Key \(key), \(agent.displayName), \(agent.status)"
         }
+        return inputDescription(key)
+    }
+
+    private func inputDescription(_ input: Int) -> String {
+        let name = Pad.input(input)?.name ?? "Input \(input)"
+        let action = bridge.keyBindings.action(for: input)
         switch action {
-        case .defaultAction, .none:
-            return "Key \(key), no action"
+        case .none:
+            return "\(name), no action"
         case .focusAgent:
-            return Pad.agentSlot(for: key) == nil
-                ? "Key \(key), return focus to the currently selected Herdr agent"
-                : "Key \(key), focus its assigned agent"
-        case .stack:
-            return "Key \(key), GitButler stack"
-        case .cycleTabs:
-            return "Key \(key), cycle tabs"
-        case .land:
-            return "Key \(key), land branches"
-        case .macro:
-            return "Key \(key), macro: \(bridge.keyBindings.text(for: key) ?? "not configured")"
-        case .voice:
-            return bridge.keyBindings.text(for: key).map { "Key \(key), macro: \($0)" }
-                ?? "Key \(key), Superwhisper voice control"
+            return Pad.agentSlot(for: input) == nil
+                ? "\(name), return focus to the currently selected Herdr agent"
+                : "\(name), focus its assigned agent"
+        default:
+            return "\(name), \(action.summary)"
         }
     }
 }
@@ -1094,11 +1088,5 @@ private struct StudioPadMapView: View {
     let navigation = StudioNavigationState()
     return StudioWindowView(runtime: runtime, bridge: bridge, navigation: navigation)
         .frame(width: 1460, height: 940)
-        .allowsHitTesting(false)
-}
-
-#Preview("Edit Key Values") {
-    KeyActionEditorView(bridge: .previewFixture())
-        .frame(width: 560, height: 460)
         .allowsHitTesting(false)
 }

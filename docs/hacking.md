@@ -373,6 +373,15 @@ to take a whole row's keycodes with it.
 > This is a **flash write**. Do it once at startup when something has actually
 > changed, not in a loop.
 
+**Timing.** A whole `keymap.json` is ~2.5 KB of JSON, about 45 reports. Over
+Bluetooth LE each `SetReport` waits for an acknowledgement, so just sending it
+can take a few seconds, and then the firmware parses the file and writes
+flash. Start the reply timeout only once the last report is written (the
+Studio's `WLDevice` does, and gives `fs.write` 30 s and `fs.read` 15 s), and
+treat a write that times out as *unknown*, not failed: the pad may still be
+writing. Wait a moment (~750 ms) before the read-back and read again if it
+does not match yet. Do not send lighting while the write is in flight.
+
 ### Geometry
 
 The matrix is `[2, 4, 4, 3]` and the key index runs row-major from 0. One
@@ -511,16 +520,53 @@ debounced signals instead of a raw stream to threshold yourself.
 
 ### The dial
 
-`layout.encoders` is a list of `[clockwise, counter-clockwise, press]`. Bind the
-two rotation slots and leave the press alone unless you want it:
+`layout.encoders` is a list of `[clockwise, counter-clockwise, press]`. Bind
+the two rotation slots, and the press if you want it too:
 
 ```js
 layer.layout.encoders[0][0] = "KV_OAI_AG13";   // CW
 layer.layout.encoders[0][1] = "KV_OAI_AG14";   // CCW
+layer.layout.encoders[0][2] = "KV_OAI_AG19";   // press
 ```
 
-Each detent now arrives as `AG13` / `AG14` through the same notification
-handler. There is nothing at index 13/14 to light — these ids are inputs only.
+Each detent now arrives as `AG13` / `AG14`, and a click as `AG19`, through the
+same notification handler. There is nothing at index 13/14/19 to light — these
+ids are inputs only.
+
+Abe's WorkLouder Creator Micro Studio binds all three. Binding the press takes
+away the stock `KC_MPLY` keystroke, so the Studio's default action for the dial
+push is a host-side Play/Pause media key — the click behaves as before, but it
+can be remapped. Unlike the firmware's `KC_MPLY`, that media key is a
+synthesised `CGEvent`, so it needs the **Accessibility** permission for the
+Studio and only works while the Studio bridge is running; the Controls page
+marks the dial push accordingly. Set the dial push to `none` (or any action
+that posts no system event) to avoid the grant. A pad bound by an earlier build gets exactly one more keymap
+write (read → check → write → read back) the first time this build connects.
+AG19 is the last free id, so the joystick diagonals and its centre press stay
+unbound: there is no id left for them, and the keymap schema has no slot for a
+centre press at all.
+
+**AG19 on the press is best-effort.** It has not been confirmed that every
+firmware keeps `KV_OAI_AG19` as a keymap keycode in `encoders[0][2]` (the docs
+only say the thread-id table runs to AG19), and the firmware answers
+`{"ok":1}` to writes it ignores. So the Studio checks in two tiers:
+
+- **Core** — keys `AG00`–`AG12`, rotations `AG13`/`AG14`, cardinals
+  `AG15`–`AG18`. Without these the pad does not light or report, which is an
+  error.
+- **Dial push** — `AG19`. Missing after a write means this firmware keeps its
+  own code (stock `KC_MPLY`, so the click still plays/pauses on its own). That
+  is not an error: the Studio records it for that `sys.version` on the Mac
+  (UserDefaults, never on the pad), stops counting the push as needing
+  Accessibility, and the Controls page's dial push row says it is unavailable,
+  with **Retry dial push binding**.
+
+At most two writes per connection: the full keymap with AG19, and only if the
+*core* then fails to read back, one fallback written without AG19 (the press
+slot left as read). If the core still does not stick, that refusal is recorded
+too and the Studio stops writing on later launches until **Retry binding**.
+A Bluetooth reconnect within the same run never writes once the outcome is
+known.
 
 ### The joystick
 
@@ -621,7 +667,7 @@ found`, which is correct and not a sign of trouble.
 | `KV_OAI_AG00`–`KV_OAI_AG12` | the 13 keys, in matrix order |
 | `KV_OAI_AG13` / `KV_OAI_AG14` | dial clockwise / counter-clockwise |
 | `KV_OAI_AG15`–`KV_OAI_AG18` | joystick north / west / south / east |
-| up to `KV_OAI_AG19` | the table's limit — clear this far when blanking |
+| `KV_OAI_AG19` | dial press — also the table's limit; clear this far when blanking |
 
 ### Field-name cheatsheet
 
@@ -697,6 +743,16 @@ from before it worked, kept because the elimination process is the useful part.
 `WLInspector` is the fastest way to try a payload shape: it has a raw JSON-RPC
 panel with presets, and logs every message in both directions with the
 notifications decoded.
+
+Whatever the Inspector paints is temporary: the pad keeps no lighting state of
+its own, so Studio's next repaint replaces it. Its **Save to Studio** buttons
+copy the selected keys' look, the underglow or the keys zone into the
+`"lighting"` section of Studio's `config.json`, which Studio reloads when it
+takes the pad back (and its Lighting page whenever it appears or the app
+becomes active). Both apps do every write as a read-modify-write under an
+advisory `flock` on `config.json.lock` next to the file, and Studio's Lighting
+saves only write the fields edited there, so neither app's save drops the
+other's. Nothing the Inspector saves is written to the device.
 
 Open `AbesWorkLouderCreatorMicroStudio.xcodeproj`, choose the **Inspector** scheme, then Run. For
 hardware access, grant Input Monitoring to the app/process macOS identifies.

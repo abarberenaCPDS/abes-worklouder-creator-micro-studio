@@ -42,7 +42,7 @@
        allowLocationSimulation = "YES">
       <PreActions>
          <ExecutionAction ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
-            <ActionContent title = "Stop Studio before Inspector" scriptText = "/usr/bin/swift &quot;${PROJECT_DIR}/scripts/stop-conflicting-apps.swift&quot; dev.abeisonai.worklouder.creatormicrostudio dev.abeisonai.worklouder.inspector">
+            <ActionContent title = "Stop Studio before Inspector" scriptText = "/usr/bin/swift &quot;${PROJECT_DIR}/scripts/stop-conflicting-apps.swift&quot; dev.abeisonai.worklouder.creatormicrostudio dev.abeisonai.worklouder.creatormicrostudio.dev dev.abeisonai.worklouder.inspector dev.abeisonai.worklouder.inspector.dev">
                <EnvironmentBuildable>
                   <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "18095EE6A2E542DBBA35820C" BuildableName = "AbesWorkLouderCreatorMicroStudioInspector.app" BlueprintName = "Inspector" ReferencedContainer = "container:AbesWorkLouderCreatorMicroStudio.xcodeproj">
                   </BuildableReference>

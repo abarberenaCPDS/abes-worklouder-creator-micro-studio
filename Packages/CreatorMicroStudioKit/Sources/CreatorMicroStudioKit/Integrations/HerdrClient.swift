@@ -18,6 +18,12 @@ public struct HerdrAgent: Equatable, Sendable {
     public var cwd: String?
     public var foregroundCwd: String?
     public var focused: Bool
+    /// The user-given agent name (`agent.rename`), when there is one.
+    public var name: String?
+    /// Herdr's display label for the harness, e.g. "Claude Code".
+    public var displayAgent: String?
+    /// The harness's own session title, when it reports one.
+    public var title: String?
 
     /// The target to hand to `agent.focus`, which resolves **pane ids only**:
     /// a `terminal_id` comes back as `agent_not_found` (Herdr 0.7.5). Herdr
@@ -40,6 +46,18 @@ public struct HerdrAgent: Equatable, Sendable {
         return (directory as NSString).lastPathComponent
     }
 
+    /// The best label for a list: the agent's name, else its directory.
+    public var displayName: String {
+        if let name, !name.isEmpty { return name }
+        return shortName
+    }
+
+    /// The harness, as Herdr labels it.
+    public var harnessName: String {
+        if let displayAgent, !displayAgent.isEmpty { return displayAgent }
+        return agent
+    }
+
     init(json: [String: Any]) {
         terminalID = json["terminal_id"] as? String
         paneID = json["pane_id"] as? String
@@ -50,9 +68,12 @@ public struct HerdrAgent: Equatable, Sendable {
         cwd = json["cwd"] as? String
         foregroundCwd = json["foreground_cwd"] as? String
         focused = json["focused"] as? Bool ?? false
+        name = json["name"] as? String
+        displayAgent = json["display_agent"] as? String
+        title = (json["title"] as? String) ?? (json["terminal_title_stripped"] as? String)
     }
 
-    /// For tests.
+    /// For tests and previews.
     public init(
         agent: String = "claude",
         status: String,
@@ -62,8 +83,14 @@ public struct HerdrAgent: Equatable, Sendable {
         terminalID: String? = nil,
         cwd: String? = nil,
         foregroundCwd: String? = nil,
-        focused: Bool = false
+        focused: Bool = false,
+        name: String? = nil,
+        displayAgent: String? = nil,
+        title: String? = nil
     ) {
+        self.name = name
+        self.displayAgent = displayAgent
+        self.title = title
         self.agent = agent
         self.status = status
         self.paneID = paneID
@@ -77,26 +104,126 @@ public struct HerdrAgent: Equatable, Sendable {
 
 }
 
-public struct HerdrTab: Equatable, Sendable {
+public struct HerdrTab: Equatable, Sendable, Identifiable {
     public var tabID: String
     public var workspaceID: String
     /// Display position within the workspace, which is the order tabs cycle in.
     public var number: Int
     public var focused: Bool
+    public var label: String
+    public var paneCount: Int
+    public var agentStatus: String?
+
+    public var id: String { tabID }
 
     init(json: [String: Any]) {
         tabID = json["tab_id"] as? String ?? ""
         workspaceID = json["workspace_id"] as? String ?? ""
         number = json["number"] as? Int ?? 0
         focused = json["focused"] as? Bool ?? false
+        label = json["label"] as? String ?? ""
+        paneCount = json["pane_count"] as? Int ?? 0
+        agentStatus = json["agent_status"] as? String
     }
 
-    /// For tests.
-    public init(tabID: String, workspaceID: String = "ws", number: Int, focused: Bool = false) {
+    /// For tests and previews.
+    public init(
+        tabID: String,
+        workspaceID: String = "ws",
+        number: Int,
+        focused: Bool = false,
+        label: String = "",
+        paneCount: Int = 0,
+        agentStatus: String? = nil
+    ) {
         self.tabID = tabID
         self.workspaceID = workspaceID
         self.number = number
         self.focused = focused
+        self.label = label
+        self.paneCount = paneCount
+        self.agentStatus = agentStatus
+    }
+
+    /// "label" or "Tab N" when the label is empty.
+    public var displayLabel: String { label.isEmpty ? "Tab \(number)" : label }
+}
+
+public struct HerdrWorkspace: Equatable, Sendable, Identifiable {
+    public var workspaceID: String
+    /// Display position, which is the order workspaces cycle in.
+    public var number: Int
+    public var label: String
+    public var focused: Bool
+    public var activeTabID: String?
+    public var tabCount: Int
+    public var paneCount: Int
+    public var agentStatus: String?
+
+    public var id: String { workspaceID }
+
+    init(json: [String: Any]) {
+        workspaceID = json["workspace_id"] as? String ?? ""
+        number = json["number"] as? Int ?? 0
+        label = json["label"] as? String ?? ""
+        focused = json["focused"] as? Bool ?? false
+        activeTabID = json["active_tab_id"] as? String
+        tabCount = json["tab_count"] as? Int ?? 0
+        paneCount = json["pane_count"] as? Int ?? 0
+        agentStatus = json["agent_status"] as? String
+    }
+
+    /// For tests and previews.
+    public init(
+        workspaceID: String,
+        number: Int,
+        label: String = "",
+        focused: Bool = false,
+        activeTabID: String? = nil,
+        tabCount: Int = 0,
+        paneCount: Int = 0,
+        agentStatus: String? = nil
+    ) {
+        self.workspaceID = workspaceID
+        self.number = number
+        self.label = label
+        self.focused = focused
+        self.activeTabID = activeTabID
+        self.tabCount = tabCount
+        self.paneCount = paneCount
+        self.agentStatus = agentStatus
+    }
+
+    /// "label" or "Workspace N" when the label is empty.
+    public var displayLabel: String { label.isEmpty ? "Workspace \(number)" : label }
+}
+
+/// The server's answer to `ping`.
+public struct HerdrPing: Equatable, Sendable {
+    public var version: String
+    public var protocolVersion: Int
+
+    public init(version: String, protocolVersion: Int) {
+        self.version = version
+        self.protocolVersion = protocolVersion
+    }
+}
+
+/// Where the socket path came from, for the connection panel.
+public enum HerdrSocketSource: String, Equatable, Sendable {
+    /// `$HERDR_SOCKET_PATH`.
+    case environment
+    /// `$XDG_CONFIG_HOME/herdr/herdr.sock`.
+    case xdgConfigHome
+    /// `~/.config/herdr/herdr.sock`.
+    case defaultPath
+
+    public var title: String {
+        switch self {
+        case .environment: return "HERDR_SOCKET_PATH"
+        case .xdgConfigHome: return "XDG_CONFIG_HOME"
+        case .defaultPath: return "Default (~/.config)"
+        }
     }
 }
 
@@ -121,12 +248,18 @@ public enum HerdrError: LocalizedError {
 
 public enum HerdrClient {
 
-    public static func socketPath() -> String {
-        let env = ProcessInfo.processInfo.environment
-        if let explicit = env["HERDR_SOCKET_PATH"], !explicit.isEmpty { return explicit }
-        let base = env["XDG_CONFIG_HOME"].flatMap { $0.isEmpty ? nil : $0 }
-            ?? (NSHomeDirectory() as NSString).appendingPathComponent(".config")
-        return (base as NSString).appendingPathComponent("herdr/herdr.sock")
+    public static func socketPath() -> String { socketLocation().path }
+
+    /// The socket path and which setting chose it.
+    public static func socketLocation(
+        environment env: [String: String] = ProcessInfo.processInfo.environment
+    ) -> (path: String, source: HerdrSocketSource) {
+        if let explicit = env["HERDR_SOCKET_PATH"], !explicit.isEmpty { return (explicit, .environment) }
+        if let xdg = env["XDG_CONFIG_HOME"], !xdg.isEmpty {
+            return ((xdg as NSString).appendingPathComponent("herdr/herdr.sock"), .xdgConfigHome)
+        }
+        let base = (NSHomeDirectory() as NSString).appendingPathComponent(".config")
+        return ((base as NSString).appendingPathComponent("herdr/herdr.sock"), .defaultPath)
     }
 
     // MARK: - Requests
@@ -138,10 +271,11 @@ public enum HerdrClient {
     ) async throws -> [String: Any] {
         try await withCheckedThrowingContinuation { continuation in
             let conn = SocketConnection(path: socketPath())
-            var finished = false
+            // The reply, the close and the timeout race on different queues;
+            // only the first may resume the continuation.
+            let once = OnceFlag()
             let finish: (Result<[String: Any], Error>) -> Void = { result in
-                guard !finished else { return }
-                finished = true
+                guard once.claim() else { return }
                 conn.close()
                 continuation.resume(with: result)
             }
@@ -233,13 +367,24 @@ public enum HerdrClient {
     /// end. Tabs in other workspaces are left alone: cycling is a
     /// within-window gesture, not a window switcher.
     public static func cycleTabs() async throws {
-        guard let next = nextTab(in: try await listTabs()) else { return }
+        try await cycleTabs(by: 1)
+    }
+
+    /// `+1` for the next tab, `-1` for the previous one, wrapping.
+    public static func cycleTabs(by offset: Int) async throws {
+        guard let next = adjacentTab(in: try await listTabs(), offset: offset) else { return }
         try await focusTab(next.tabID)
     }
 
     /// The tab `cycleTabs` would focus, or nil when there is nothing to do —
     /// no focused tab, or a workspace with a single tab.
     public static func nextTab(in tabs: [HerdrTab]) -> HerdrTab? {
+        adjacentTab(in: tabs, offset: 1)
+    }
+
+    /// The tab `offset` places from the focused one, within its workspace,
+    /// in `number` order, wrapping.
+    public static func adjacentTab(in tabs: [HerdrTab], offset: Int) -> HerdrTab? {
         guard let focused = tabs.first(where: \.focused) else { return nil }
         let siblings = tabs
             .filter { $0.workspaceID == focused.workspaceID }
@@ -247,7 +392,100 @@ public enum HerdrClient {
         guard siblings.count > 1,
               let index = siblings.firstIndex(of: focused)
         else { return nil }
-        return siblings[(index + 1) % siblings.count]
+        return siblings[wrap(index + offset, siblings.count)]
+    }
+
+    public static func listWorkspaces() async throws -> [HerdrWorkspace] {
+        let result = try await request("workspace.list")
+        let raw = result["workspaces"] as? [[String: Any]] ?? []
+        return raw.map(HerdrWorkspace.init(json:))
+    }
+
+    public static func focusWorkspace(_ workspaceID: String) async throws {
+        _ = try await request("workspace.focus", params: ["workspace_id": workspaceID])
+    }
+
+    /// `+1` for the next workspace, `-1` for the previous one, wrapping.
+    public static func cycleWorkspaces(by offset: Int) async throws {
+        guard let next = adjacentWorkspace(in: try await listWorkspaces(), offset: offset) else { return }
+        try await focusWorkspace(next.workspaceID)
+    }
+
+    /// The workspace `offset` places from the focused one, in `number`
+    /// order, wrapping; nil with no focused workspace or only one.
+    public static func adjacentWorkspace(in workspaces: [HerdrWorkspace], offset: Int) -> HerdrWorkspace? {
+        let ordered = workspaces.sorted { $0.number < $1.number }
+        guard ordered.count > 1,
+              let index = ordered.firstIndex(where: \.focused)
+        else { return nil }
+        return ordered[wrap(index + offset, ordered.count)]
+    }
+
+    private static func wrap(_ index: Int, _ count: Int) -> Int {
+        ((index % count) + count) % count
+    }
+
+    /// Server version and protocol: the cheapest health check there is.
+    public static func ping(timeout: TimeInterval = 2) async throws -> HerdrPing {
+        let result = try await request("ping", timeout: timeout)
+        return HerdrPing(
+            version: result["version"] as? String ?? "?",
+            protocolVersion: result["protocol"] as? Int ?? 0
+        )
+    }
+
+    /// Moves focus to the neighbouring pane: "left", "right", "up", "down".
+    public static func focusPane(direction: String) async throws {
+        _ = try await request("pane.focus_direction", params: ["direction": direction])
+    }
+
+    /// Toggles zoom on the focused pane.
+    public static func zoomPane() async throws {
+        _ = try await request("pane.zoom", params: ["mode": "toggle"])
+    }
+
+    /// Pastes `text` and presses Enter as one submission. Herdr refuses a
+    /// blocked agent (`agent_blocked`) rather than typing into its question.
+    public static func promptAgent(target: String, text: String) async throws {
+        _ = try await request("agent.prompt", params: ["target": target, "text": text])
+    }
+
+    /// The pane Herdr has focused (`pane.current`), agent or not.
+    public static func currentPaneID() async throws -> String? {
+        let result = try await request("pane.current")
+        let pane = result["pane"] as? [String: Any]
+        return (pane?["pane_id"] as? String) ?? (result["pane_id"] as? String)
+    }
+
+    /// Herdr's focus right now, read fresh, for a Herdr command's
+    /// placeholders. Only what `needs` asks for is fetched. The tab is the
+    /// one focused in the focused workspace — the *current* tab — not the
+    /// tab of the focused agent.
+    public static func commandContext(needs: Set<HerdrCommand.Placeholder>) async throws -> HerdrCommand.Context {
+        let needsTabs = !needs.isDisjoint(with: [.tab, .tabLabel, .workspace, .workspaceLabel])
+
+        var workspaces: [HerdrWorkspace] = []
+        var tabs: [HerdrTab] = []
+        if needsTabs {
+            workspaces = try await listWorkspaces()
+            let focused = workspaces.first(where: \.focused)?.workspaceID
+            tabs = try await listTabs(workspaceID: focused)
+        }
+        var currentPane: String?
+        if needs.contains(.pane) {
+            // An older Herdr without pane.current falls back to the agent.
+            currentPane = try? await currentPaneID()
+        }
+        let needsAgent = needs.contains(.agent) || (needs.contains(.pane) && currentPane == nil)
+        let agent = needsAgent ? try await focusedAgent() : nil
+        return .current(workspaces: workspaces, tabs: tabs, currentPane: currentPane, focusedAgent: agent)
+    }
+
+    /// Splits a `"ctrl+c esc"` style string into the key list
+    /// `pane.send_keys` takes.
+    public static func keyList(_ keys: String) -> [String] {
+        keys.split(whereSeparator: { $0 == " " || $0 == "," || $0 == "\n" || $0 == "\t" })
+            .map(String.init)
     }
 
     private static let counter = Counter()
@@ -264,6 +502,24 @@ public enum HerdrClient {
     }
 }
 
+/// A flag that can be claimed once, from any thread.
+final class OnceFlag: @unchecked Sendable {
+    private var claimed = false
+    private let lock = NSLock()
+    /// True exactly once.
+    func claim() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if claimed { return false }
+        claimed = true
+        return true
+    }
+
+    var isClaimed: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return claimed
+    }
+}
+
 // MARK: - Event streams
 
 /// One subscription, on its own connection. The first line is the
@@ -275,8 +531,11 @@ public final class HerdrEventStream {
 
     private let subscriptions: [[String: Any]]
     private let conn: SocketConnection
+    /// Only touched on the connection's read queue.
     private var ready = false
-    private var stopped = false
+    /// Written on main by stop(), read on the read queue.
+    private let stopFlag = OnceFlag()
+    private var stopped: Bool { stopFlag.isClaimed }
 
     public init(subscriptions: [[String: Any]]) {
         self.subscriptions = subscriptions
@@ -292,6 +551,15 @@ public final class HerdrEventStream {
             else { return }
             if !self.ready {
                 self.ready = true
+                // The first line answers events.subscribe; an error there
+                // means no events will ever come, so say so rather than
+                // sitting "subscribed" on a dead stream.
+                if let error = object["error"] as? [String: Any] {
+                    let message = error["message"] as? String ?? "events.subscribe failed"
+                    self.conn.close()
+                    DispatchQueue.main.async { self.onClosed?(HerdrError.api(message)) }
+                    return
+                }
                 DispatchQueue.main.async { self.onReady?() }
                 return
             }
@@ -321,7 +589,7 @@ public final class HerdrEventStream {
     }
 
     public func stop() {
-        stopped = true
+        _ = stopFlag.claim()
         conn.close()
     }
 
@@ -334,8 +602,19 @@ public final class HerdrEventStream {
 /// alternative is Network.framework, which adds ceremony for no benefit on a
 /// local Unix socket.
 final class SocketConnection: @unchecked Sendable {
-    var onLine: ((String) -> Void)?
-    var onClosed: ((Error?) -> Void)?
+    /// The handlers usually capture whoever owns this connection, which owns
+    /// it back; `close()` drops them to break that cycle, so every request's
+    /// connection (and its queue) is freed once it is done.
+    var onLine: ((String) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return lineHandler }
+        set { lock.lock(); lineHandler = newValue; lock.unlock() }
+    }
+    var onClosed: ((Error?) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return closedHandler }
+        set { lock.lock(); closedHandler = newValue; lock.unlock() }
+    }
+    private var lineHandler: ((String) -> Void)?
+    private var closedHandler: ((Error?) -> Void)?
 
     private let path: String
     private var fd: Int32 = -1
@@ -381,7 +660,7 @@ final class SocketConnection: @unchecked Sendable {
 
     func write(_ data: Data) {
         lock.lock(); defer { lock.unlock() }
-        guard fd >= 0 else { return }
+        guard fd >= 0, !closed else { return }
         data.withUnsafeBytes { raw in
             var sent = 0
             while sent < raw.count {
@@ -392,20 +671,38 @@ final class SocketConnection: @unchecked Sendable {
         }
     }
 
+    /// Wakes the reader and stops further writes. The descriptor itself is
+    /// released only by the read loop (or deinit when no loop ever ran):
+    /// closing it here, while the loop may be about to `read` it, could let
+    /// a new connection reuse the number and the old loop read its reply.
     func close() {
         lock.lock()
         let handle = fd
-        fd = -1
         closed = true
+        lineHandler = nil
+        closedHandler = nil
+        if handle >= 0 { Darwin.shutdown(handle, SHUT_RDWR) }
         lock.unlock()
-        if handle >= 0 { Darwin.close(handle) }
+    }
+
+    deinit {
+        // A running loop holds a strong reference, so reaching here means no
+        // loop owns the descriptor any more.
+        if fd >= 0 { Darwin.close(fd) }
     }
 
     private func readLoop() {
         var chunk = [UInt8](repeating: 0, count: 8192)
+        defer {
+            lock.lock()
+            let handle = fd
+            fd = -1
+            lock.unlock()
+            if handle >= 0 { Darwin.close(handle) }
+        }
         while true {
-            lock.lock(); let handle = fd; lock.unlock()
-            guard handle >= 0 else { break }
+            lock.lock(); let handle = fd; let isClosed = closed; lock.unlock()
+            guard handle >= 0, !isClosed else { break }
 
             let n = Darwin.read(handle, &chunk, chunk.count)
             if n <= 0 { break }
@@ -416,11 +713,15 @@ final class SocketConnection: @unchecked Sendable {
                 buffer = buffer.suffix(from: buffer.index(after: index))
                 if let line = String(data: lineData, encoding: .utf8)?
                     .trimmingCharacters(in: .whitespacesAndNewlines), !line.isEmpty {
+                    // Read under the lock; a concurrent close() may clear it.
                     onLine?(line)
                 }
             }
         }
-        lock.lock(); let wasClosed = closed; lock.unlock()
-        if !wasClosed { onClosed?(nil) }
+        lock.lock()
+        let wasClosed = closed
+        let handler = closedHandler
+        lock.unlock()
+        if !wasClosed { handler?(nil) }
     }
 }

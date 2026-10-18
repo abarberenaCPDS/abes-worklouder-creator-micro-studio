@@ -57,7 +57,7 @@ struct MenuPanelView: View {
     private var header: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Abe's WorkLouder Creator Micro Studio").font(.headline)
+                Text(AppIdentity.displayName).font(.headline)
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -122,7 +122,14 @@ struct MenuPanelView: View {
             .frame(width: 24, height: 24)
             .frame(width: 34, height: 26)
             .accessibilityLabel("Rotary dial")
-            .help("Dial, clockwise and counter-clockwise")
+            .help(bindingHelp(.dial))
+    }
+
+    /// One line per input in the group, built from the current bindings.
+    private func bindingHelp(_ group: Pad.InputGroup) -> String {
+        group.inputs
+            .map { "\($0.name): \(bridge.keyBindings.action(for: $0.id).summary)" }
+            .joined(separator: "\n")
     }
 
     private var joystickMarker: some View {
@@ -135,7 +142,7 @@ struct MenuPanelView: View {
             .frame(width: 24, height: 24)
             .frame(width: 34, height: 26)
             .accessibilityLabel("Joystick")
-            .help("Joystick, four directions")
+            .help(bindingHelp(.joystick))
     }
 
     private var caseMark: some View {
@@ -173,24 +180,16 @@ struct MenuPanelView: View {
     }
 
     private func helpText(_ index: Int, agent: HerdrAgent?) -> String {
-        switch bridge.keyBindings.action(for: index) {
-        case .defaultAction, .none:
+        let action = bridge.keyBindings.action(for: index)
+        switch action {
+        case .none:
             return "Key \(index), no action"
         case .focusAgent:
-            if let agent { return "\(agent.shortName) — \(agent.status)" }
+            if let agent { return "\(agent.displayName) — \(agent.status)" }
             if Pad.agentSlot(for: index) != nil { return "Key \(index), no agent in this slot" }
             return "Key \(index), return focus to the currently selected Herdr agent"
-        case .stack:
-            return "Key \(index), GitButler stack for the focused agent"
-        case .cycleTabs:
-            return "Key \(index), cycle tabs in the focused Herdr window"
-        case .land:
-            return "Key \(index), land the focused agent's branches onto the target"
-        case .macro:
-            return "Key \(index), prompt macro: \(bridge.keyBindings.text(for: index) ?? "not configured")"
-        case .voice:
-            if let text = bridge.keyBindings.text(for: index) { return "Key \(index), prompt macro: \(text)" }
-            return "Key \(index), Superwhisper voice control"
+        default:
+            return "Key \(index), \(action.summary)"
         }
     }
 
@@ -240,10 +239,12 @@ struct MenuPanelView: View {
             Text("macOS blocks access to the pad until this app is allowed to monitor input.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Request / Review Input Monitoring…") {
-                _ = WLDevice.requestInputMonitoringAccessIfNeeded()
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
-                    NSWorkspace.shared.open(url)
+            HStack {
+                Button("Request Access") {
+                    runtime.requestStudioInputMonitoringAccess()
+                }
+                Button("Show me how…") {
+                    runtime.showInputMonitoringHelp()
                 }
             }
         }

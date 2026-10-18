@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Abe's WorkLouder Creator Micro Studio Inspector</string>
+	<string>$(WL_APP_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -26,5 +26,7 @@
 	<string>public.app-category.utilities</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Debug UI for the Work Louder Creator Micro 2.</string>
+	<key>WLBuildChannel</key>
+	<string>$(WL_BUILD_CHANNEL)</string>
 </dict>
 </plist>

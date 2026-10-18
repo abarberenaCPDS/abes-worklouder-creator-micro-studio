@@ -43,20 +43,12 @@
 		E8C404EC2C634BA3A83973CC /* Emulator */ = { isa = PBXGroup; children = (
 						65EB3BCDF2A24A4C8CC966CD,
 					); path = "Emulator"; sourceTree = "<group>"; };
-		0D846EDB96EF4B90BDA8587A /* LandPanel.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LandPanel.swift"; sourceTree = "<group>"; };
-		D09B18DFDE244EB8989F0328 /* Land */ = { isa = PBXGroup; children = (
-						0D846EDB96EF4B90BDA8587A,
-					); path = "Land"; sourceTree = "<group>"; };
 		45007A686AEE45C484003C83 /* MenuBarIcon.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MenuBarIcon.swift"; sourceTree = "<group>"; };
 		0E2CB531E2A7493BA62CBF66 /* MenuPanelView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MenuPanelView.swift"; sourceTree = "<group>"; };
 		91F8590252EC4364B76F173F /* Panel */ = { isa = PBXGroup; children = (
 						45007A686AEE45C484003C83,
 						0E2CB531E2A7493BA62CBF66,
 					); path = "Panel"; sourceTree = "<group>"; };
-		091D8A9DCC4049F8A4000523 /* StackPanel.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StackPanel.swift"; sourceTree = "<group>"; };
-		2B12798DA6684381B29489D6 /* Stack */ = { isa = PBXGroup; children = (
-						091D8A9DCC4049F8A4000523,
-					); path = "Stack"; sourceTree = "<group>"; };
 		3E43FE88B7544DF18BFD043B /* TuneController.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TuneController.swift"; sourceTree = "<group>"; };
 		4E903C2513AF40589E5E4F20 /* TunePanel.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TunePanel.swift"; sourceTree = "<group>"; };
 		F51653AE2D824DDA99324D80 /* Tune */ = { isa = PBXGroup; children = (
@@ -71,11 +63,31 @@
 		649E774780CB4E3AAB5D32B0 /* Welcome */ = { isa = PBXGroup; children = (
 						F79F3201131E4E4A963E274E,
 					); path = "Welcome"; sourceTree = "<group>"; };
+		B2707693B87F237DE66E7A3A /* ControlsView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ControlsView.swift"; sourceTree = "<group>"; };
+		1CE18DDA5467F2F6CB17C91F /* Controls */ = { isa = PBXGroup; children = (
+						B2707693B87F237DE66E7A3A,
+					); path = "Controls"; sourceTree = "<group>"; };
+		B828C3E4E71839F8D44D96F6 /* LightingView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LightingView.swift"; sourceTree = "<group>"; };
+		2C812568E0539B7C8541E6FA /* Lighting */ = { isa = PBXGroup; children = (
+						B828C3E4E71839F8D44D96F6,
+					); path = "Lighting"; sourceTree = "<group>"; };
+		B5FDDDF09918E54CDF5547FD /* HerdrView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdrView.swift"; sourceTree = "<group>"; };
+		F10B04DBC1143B18CB99ED98 /* HerdrAskPanel.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdrAskPanel.swift"; sourceTree = "<group>"; };
+		4C498B70C1726EC4ED3C00D8 /* Herdr */ = { isa = PBXGroup; children = (
+						F10B04DBC1143B18CB99ED98,
+						B5FDDDF09918E54CDF5547FD,
+					); path = "Herdr"; sourceTree = "<group>"; };
+		352458C79B3F875302360B31 /* PermissionHelper.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PermissionHelper.swift"; sourceTree = "<group>"; };
+		C7EEB25FEE47C2FBCCBECE08 /* Permissions */ = { isa = PBXGroup; children = (
+						352458C79B3F875302360B31,
+					); path = "Permissions"; sourceTree = "<group>"; };
 		2D72358E2DA14FFAB027B006 /* Features */ = { isa = PBXGroup; children = (
+						1CE18DDA5467F2F6CB17C91F,
+						2C812568E0539B7C8541E6FA,
+						4C498B70C1726EC4ED3C00D8,
 						E8C404EC2C634BA3A83973CC,
-						D09B18DFDE244EB8989F0328,
 						91F8590252EC4364B76F173F,
-						2B12798DA6684381B29489D6,
+						C7EEB25FEE47C2FBCCBECE08,
 						F51653AE2D824DDA99324D80,
 						5AC8154773A14E8E97C8F3F8,
 						649E774780CB4E3AAB5D32B0,
@@ -108,8 +120,16 @@
 						E813980B4DA943F49E270109,
 					); path = "Bridge"; sourceTree = "<group>"; };
 		A179E52190B545D5A456AB72 /* KeyBindings.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeyBindings.swift"; sourceTree = "<group>"; };
+		41AF399ABD8346F09CEB6EF5 /* InputAction.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "InputAction.swift"; sourceTree = "<group>"; };
+		A3B6C1FB4BCD49D896F687B3 /* LightingPreferences.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LightingPreferences.swift"; sourceTree = "<group>"; };
+		4988E1AC36F146FBBF5D6D43 /* PadInput.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PadInput.swift"; sourceTree = "<group>"; };
+		6D5E59152474417DAA4D645E /* StudioConfigStore.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StudioConfigStore.swift"; sourceTree = "<group>"; };
 		DB3DB88AECF4428191A04608 /* Configuration */ = { isa = PBXGroup; children = (
+						41AF399ABD8346F09CEB6EF5,
 						A179E52190B545D5A456AB72,
+						A3B6C1FB4BCD49D896F687B3,
+						4988E1AC36F146FBBF5D6D43,
+						6D5E59152474417DAA4D645E,
 					); path = "Configuration"; sourceTree = "<group>"; };
 		05D479D8F6A14C9B8E29F160 /* KeymapManager.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeymapManager.swift"; sourceTree = "<group>"; };
 		D75F04C03B08415AA8AD47F1 /* OAIProtocol.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OAIProtocol.swift"; sourceTree = "<group>"; };
@@ -123,15 +143,17 @@
 						8FC2766D49024FA09BBADD59,
 						09E7D8B7612D44C3A0EB8000,
 					); path = "Device"; sourceTree = "<group>"; };
-		97190BD5A42141258AEA08A4 /* AnsiHTML.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AnsiHTML.swift"; sourceTree = "<group>"; };
+		97190BD5A42141258AEA08A4 /* HTMLText.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HTMLText.swift"; sourceTree = "<group>"; };
 		307BA75E3E0B4E6CA79B887E /* Formatting */ = { isa = PBXGroup; children = (
 						97190BD5A42141258AEA08A4,
 					); path = "Formatting"; sourceTree = "<group>"; };
-		FFFCE6BAB7084FACA827378A /* GitButler.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitButler.swift"; sourceTree = "<group>"; };
 		DB0EABBA28354858B067AC68 /* HerdrClient.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdrClient.swift"; sourceTree = "<group>"; };
+		5878765F64394A0483E2770C /* HerdrStatus.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdrStatus.swift"; sourceTree = "<group>"; };
+		1ECD87B1657C48D792078F04 /* SystemActions.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SystemActions.swift"; sourceTree = "<group>"; };
 		37891A744D1C40728A40AB27 /* Integrations */ = { isa = PBXGroup; children = (
-						FFFCE6BAB7084FACA827378A,
 						DB0EABBA28354858B067AC68,
+						5878765F64394A0483E2770C,
+						1ECD87B1657C48D792078F04,
 					); path = "Integrations"; sourceTree = "<group>"; };
 		52877B5295424F0C8268B7F5 /* CreatorMicroStudioKit */ = { isa = PBXGroup; children = (
 						172684B643B24147B4427B0E,
@@ -144,42 +166,56 @@
 						52877B5295424F0C8268B7F5,
 					); path = "Sources"; sourceTree = "<group>"; };
 		86A681A1497D40B498AC4DD6 /* StatusMapperTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StatusMapperTests.swift"; sourceTree = "<group>"; };
+		69F99F4C59E449BCADE9C327 /* BridgeDispatchTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BridgeDispatchTests.swift"; sourceTree = "<group>"; };
 		C2E0797DFC1E44808E91E55A /* Bridge */ = { isa = PBXGroup; children = (
+						69F99F4C59E449BCADE9C327,
 						86A681A1497D40B498AC4DD6,
 					); path = "Bridge"; sourceTree = "<group>"; };
 		9BCF63F0C6B443B19EF44A3D /* KeyBindingsTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeyBindingsTests.swift"; sourceTree = "<group>"; };
+		DC7906DBFD554C658C104871 /* InputActionTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "InputActionTests.swift"; sourceTree = "<group>"; };
+		0DFB600B1BFA4810B95CB78A /* LightingPreferencesTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LightingPreferencesTests.swift"; sourceTree = "<group>"; };
+		A290091A7F1644639680ADFD /* StudioConfigStoreTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StudioConfigStoreTests.swift"; sourceTree = "<group>"; };
+		E047EE38338B4CAFB9217610 /* SymbolAvailabilityTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SymbolAvailabilityTests.swift"; sourceTree = "<group>"; };
 		09CFCA8D98AF4C3DBA0FD5A8 /* Configuration */ = { isa = PBXGroup; children = (
+						DC7906DBFD554C658C104871,
 						9BCF63F0C6B443B19EF44A3D,
+						0DFB600B1BFA4810B95CB78A,
+						A290091A7F1644639680ADFD,
+						E047EE38338B4CAFB9217610,
 					); path = "Configuration"; sourceTree = "<group>"; };
 		DA930347EF204B68981C7232 /* KeymapManagerTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeymapManagerTests.swift"; sourceTree = "<group>"; };
 		A88CECC9788D48AB87505DD1 /* PadEmulatorTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PadEmulatorTests.swift"; sourceTree = "<group>"; };
 		C9C198179A724993A8D06D4C /* PlaceholderTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlaceholderTests.swift"; sourceTree = "<group>"; };
+		933672DC4E2F4FB8BCEB5073 /* WLDeviceFailureTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WLDeviceFailureTests.swift"; sourceTree = "<group>"; };
 		280FD7C5252A4B03B4C35B03 /* Device */ = { isa = PBXGroup; children = (
 						DA930347EF204B68981C7232,
 						A88CECC9788D48AB87505DD1,
 						C9C198179A724993A8D06D4C,
+						933672DC4E2F4FB8BCEB5073,
 					); path = "Device"; sourceTree = "<group>"; };
 		388680FCE0EB4699960B9F8C /* stock-keymap.json */ = { isa = PBXFileReference; lastKnownFileType = text.json; path = "stock-keymap.json"; sourceTree = "<group>"; };
 		042BCC1D5C3A49F0861F7F42 /* Fixtures */ = { isa = PBXGroup; children = (
 						388680FCE0EB4699960B9F8C,
 					); path = "Fixtures"; sourceTree = "<group>"; };
-		974D2D835B9B40D49C6B0234 /* AnsiHTMLTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AnsiHTMLTests.swift"; sourceTree = "<group>"; };
+		974D2D835B9B40D49C6B0234 /* HTMLTextTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HTMLTextTests.swift"; sourceTree = "<group>"; };
 		4269AE0CB160457F90BF88FB /* Formatting */ = { isa = PBXGroup; children = (
 						974D2D835B9B40D49C6B0234,
 					); path = "Formatting"; sourceTree = "<group>"; };
 		A73AE975E8434865A23E8274 /* LiveDeviceTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LiveDeviceTests.swift"; sourceTree = "<group>"; };
-		85115557F6CE4AEBACA5BF66 /* LiveGitButlerTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LiveGitButlerTests.swift"; sourceTree = "<group>"; };
 		50AEE21454584484BD3AC1E2 /* LiveHerdrTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LiveHerdrTests.swift"; sourceTree = "<group>"; };
+		BE3992A448E449F2B2B91F43 /* LiveIntegrationTestCase.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LiveIntegrationTestCase.swift"; sourceTree = "<group>"; };
 		DE8B0A645B9E4A79BE464667 /* Integration */ = { isa = PBXGroup; children = (
 						A73AE975E8434865A23E8274,
-						85115557F6CE4AEBACA5BF66,
 						50AEE21454584484BD3AC1E2,
+						BE3992A448E449F2B2B91F43,
 					); path = "Integration"; sourceTree = "<group>"; };
-		C8103B6616114102B27F5C24 /* GitButlerLandPlanTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitButlerLandPlanTests.swift"; sourceTree = "<group>"; };
 		4186B70C03C74A78AEA80022 /* HerdrTabCycleTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdrTabCycleTests.swift"; sourceTree = "<group>"; };
+		FD1A3186272E4D4BB5310497 /* HerdrStatusTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdrStatusTests.swift"; sourceTree = "<group>"; };
+		A4E1510F8C1642CD80C08B7A /* SystemActionsTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SystemActionsTests.swift"; sourceTree = "<group>"; };
 		D877F873508D4F7EA9C47D51 /* Integrations */ = { isa = PBXGroup; children = (
-						C8103B6616114102B27F5C24,
+						FD1A3186272E4D4BB5310497,
 						4186B70C03C74A78AEA80022,
+						A4E1510F8C1642CD80C08B7A,
 					); path = "Integrations"; sourceTree = "<group>"; };
 		C6257B0FE9B5469FB1720AED /* CreatorMicroStudioKitTests */ = { isa = PBXGroup; children = (
 						C2E0797DFC1E44808E91E55A,
@@ -226,10 +262,8 @@
 					); path = "scripts"; sourceTree = "<group>"; };
 		FB3C405D2E6D4201B03E03CE /* Swift source */ = { isa = PBXBuildFile; fileRef = 57359650AD184068AB688A18; };
 		5E3B8B018F8B44F2BBB44897 /* Swift source */ = { isa = PBXBuildFile; fileRef = 65EB3BCDF2A24A4C8CC966CD; };
-		624C63FD454F459AB5672B21 /* Swift source */ = { isa = PBXBuildFile; fileRef = 0D846EDB96EF4B90BDA8587A; };
 		CD4C9654AD25436ABDFB0A0D /* Swift source */ = { isa = PBXBuildFile; fileRef = 45007A686AEE45C484003C83; };
 		D6794CCEED6142EDA515F33D /* Swift source */ = { isa = PBXBuildFile; fileRef = 0E2CB531E2A7493BA62CBF66; };
-		5DE4ABF0F5584CF4B65F32BE /* Swift source */ = { isa = PBXBuildFile; fileRef = 091D8A9DCC4049F8A4000523; };
 		7D0B3870BF19494C9B1AF109 /* Swift source */ = { isa = PBXBuildFile; fileRef = 3E43FE88B7544DF18BFD043B; };
 		E5D2CC725B6441009216406A /* Swift source */ = { isa = PBXBuildFile; fileRef = 4E903C2513AF40589E5E4F20; };
 		241BD0AFA81B4F66B3C7DDE4 /* Swift source */ = { isa = PBXBuildFile; fileRef = 55412BF197D84F52B709AAD7; };
@@ -237,29 +271,38 @@
 		9A7E92D41AF841008D2E5271 /* Swift source */ = { isa = PBXBuildFile; fileRef = 26A19E4639D548D68A70D6B1; };
 		4AD347E638DB4D12A3E1C31A /* Shared Inspector AppModel */ = { isa = PBXBuildFile; fileRef = E9DFFF998366473E88CCD85B; };
 		B63FE0D6F59745309142A2D4 /* Shared Inspector ContentView */ = { isa = PBXBuildFile; fileRef = D3583E531A3A47AC80A6532A; };
+		D3970E2ED4CA4BB3AE28E361 /* Swift source */ = { isa = PBXBuildFile; fileRef = B2707693B87F237DE66E7A3A; };
+		F7B6EB1DC059B7DB17E2B86F /* Swift source */ = { isa = PBXBuildFile; fileRef = B828C3E4E71839F8D44D96F6; };
+		E59BE27CD3029B36957B2361 /* Swift source */ = { isa = PBXBuildFile; fileRef = B5FDDDF09918E54CDF5547FD; };
+		231AF7FC2D3FB02CB139518D /* Swift source */ = { isa = PBXBuildFile; fileRef = F10B04DBC1143B18CB99ED98; };
+		0D201105EF3007B771DC95D7 /* Swift source */ = { isa = PBXBuildFile; fileRef = 352458C79B3F875302360B31; };
 		1C604F0F8AC64E4E9FE8E237 /* Swift source */ = { isa = PBXBuildFile; fileRef = F79F3201131E4E4A963E274E; };
 		8667F6666F934D8FB057CD82 /* Swift source */ = { isa = PBXBuildFile; fileRef = D3A01AA0FDEA44688E46760C; };
 		08AB40E30C684172830AEEC8 /* Swift source */ = { isa = PBXBuildFile; fileRef = E9DFFF998366473E88CCD85B; };
 		8EEF563263C546FF96F80E9A /* Swift source */ = { isa = PBXBuildFile; fileRef = D3583E531A3A47AC80A6532A; };
 		270C372169AE4A99B4484FD3 /* Assets.xcassets */ = { isa = PBXBuildFile; fileRef = CDA18C74654E4AE7902704F4; };
 		91380A08522546B3A7A3A6A1 /* Assets.xcassets */ = { isa = PBXBuildFile; fileRef = 85BEF3A366414612A7F48DED; };
-		C93E8D4AB2564F1C9BD2F71 /* Embed Inspector app */ = { isa = PBXBuildFile; fileRef = B4955F11A8664259A0C11DF2; settings = { ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		C93E8D4AB2564F1C9BD2F71 /* Embed Inspector app */ = { isa = PBXBuildFile; fileRef = 7A1E0C0FFEE04D2B9E6A1101; settings = { ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		676935D7983947859B40AD9F /* CreatorMicroStudioKit in Frameworks */ = { isa = PBXBuildFile; productRef = D996D1AC7A294110A9578A5E; };
 		3502AEAC3F5E49E2BCA82979 /* CreatorMicroStudioKit in Frameworks */ = { isa = PBXBuildFile; productRef = 5047A0903DA2453783C8C2D4; };
 		472F60A4DC7D45C9A8CBF9FA /* AbesWorkLouderCreatorMicroStudio.app */ = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AbesWorkLouderCreatorMicroStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B4955F11A8664259A0C11DF2 /* AbesWorkLouderCreatorMicroStudioInspector.app */ = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AbesWorkLouderCreatorMicroStudioInspector.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		F19427B3D3704AD6A451971E /* Products */ = { isa = PBXGroup; children = (472F60A4DC7D45C9A8CBF9FA, B4955F11A8664259A0C11DF2,); name = Products; sourceTree = "<group>"; };
+		7A1E0C0FFEE04D2B9E6A1101 /* Embedded Inspector (per-config name) */ = { isa = PBXFileReference; lastKnownFileType = wrapper.application; name = "Embedded Inspector.app"; path = "$(WL_INSPECTOR_PRODUCT_NAME).app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F19427B3D3704AD6A451971E /* Products */ = { isa = PBXGroup; children = (472F60A4DC7D45C9A8CBF9FA, B4955F11A8664259A0C11DF2, 7A1E0C0FFEE04D2B9E6A1101,); name = Products; sourceTree = "<group>"; };
 		394F49A11B3D44C384493E7A = { isa = PBXGroup; children = (45925897FAF84FDEB6C7D4AF, 11FB31688A064BB8B496ADF5, 4DE5F742F43048B98292BB63, 3005A06C0D344C228B578FA3, F19427B3D3704AD6A451971E,); sourceTree = "<group>"; };
 		4915A2A286CC4F95BF9CC056 /* CreatorMicroStudioKit */ = { isa = XCLocalSwiftPackageReference; relativePath = Packages/CreatorMicroStudioKit; };
 		D996D1AC7A294110A9578A5E /* CreatorMicroStudioKit */ = { isa = XCSwiftPackageProductDependency; package = 4915A2A286CC4F95BF9CC056; productName = CreatorMicroStudioKit; };
 		5047A0903DA2453783C8C2D4 /* CreatorMicroStudioKit */ = { isa = XCSwiftPackageProductDependency; package = 4915A2A286CC4F95BF9CC056; productName = CreatorMicroStudioKit; };
 		75D06C80FA58467AAA1256AD /* Sources */ = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+						D3970E2ED4CA4BB3AE28E361,
+						F7B6EB1DC059B7DB17E2B86F,
+						E59BE27CD3029B36957B2361,
+						231AF7FC2D3FB02CB139518D,
+						0D201105EF3007B771DC95D7,
 						FB3C405D2E6D4201B03E03CE,
 						5E3B8B018F8B44F2BBB44897,
-						624C63FD454F459AB5672B21,
 						CD4C9654AD25436ABDFB0A0D,
 						D6794CCEED6142EDA515F33D,
-						5DE4ABF0F5584CF4B65F32BE,
 						7D0B3870BF19494C9B1AF109,
 						E5D2CC725B6441009216406A,
 						241BD0AFA81B4F66B3C7DDE4,
@@ -305,18 +348,18 @@
 					}; name = Release; };
 		BD8DE6185DCA49E98C3F5EAD /* Build configurations */ = { isa = XCConfigurationList; buildConfigurations = (8B46CF2B7CEB49C3858C704A, 16FA914B549242C08C0E4FB7,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		1EAF48A8576F4F2E9BC1E2EA /* Debug */ = { isa = XCBuildConfiguration; buildSettings = {
-						ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+						ASSETCATALOG_COMPILER_APPICON_NAME = AppIconDev;
 						CODE_SIGN_STYLE = Automatic;
 						COPY_PHASE_STRIP = NO;
-						CURRENT_PROJECT_VERSION = 1;
+						CURRENT_PROJECT_VERSION = 7;
 						ENABLE_PREVIEWS = YES;
 						GENERATE_INFOPLIST_FILE = NO;
 						INFOPLIST_FILE = "Apps/CreatorMicroStudio/Info.plist";
 						LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
 						MACOSX_DEPLOYMENT_TARGET = 13.0;
-						MARKETING_VERSION = 0.1.0;
-						PRODUCT_BUNDLE_IDENTIFIER = "dev.abeisonai.worklouder.creatormicrostudio";
-						PRODUCT_NAME = "AbesWorkLouderCreatorMicroStudio";
+						MARKETING_VERSION = 0.3.1;
+						PRODUCT_BUNDLE_IDENTIFIER = "dev.abeisonai.worklouder.creatormicrostudio.dev";
+						PRODUCT_NAME = "AbesWorkLouderCreatorMicroStudioDev";
 						PRODUCT_MODULE_NAME = CreatorMicroStudio;
 						SDKROOT = macosx;
 						SUPPORTED_PLATFORMS = macosx;
@@ -326,18 +369,22 @@
 						ENABLE_HARDENED_RUNTIME = NO;
 						SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 						ONLY_ACTIVE_ARCH = YES;
+						WL_APP_DISPLAY_NAME = "Abe's WorkLouder Creator Micro Studio Dev";
+						WL_BUILD_CHANNEL = Dev;
+						WL_INSPECTOR_BUNDLE_IDENTIFIER = "dev.abeisonai.worklouder.inspector.dev";
+						WL_INSPECTOR_PRODUCT_NAME = "AbesWorkLouderCreatorMicroStudioInspectorDev";
 					}; name = Debug; };
 		9E5F824317A94CAD900856DB /* Release */ = { isa = XCBuildConfiguration; buildSettings = {
 						ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 						CODE_SIGN_STYLE = Automatic;
 						COPY_PHASE_STRIP = NO;
-						CURRENT_PROJECT_VERSION = 1;
+						CURRENT_PROJECT_VERSION = 7;
 						ENABLE_PREVIEWS = YES;
 						GENERATE_INFOPLIST_FILE = NO;
 						INFOPLIST_FILE = "Apps/CreatorMicroStudio/Info.plist";
 						LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
 						MACOSX_DEPLOYMENT_TARGET = 13.0;
-						MARKETING_VERSION = 0.1.0;
+						MARKETING_VERSION = 0.3.1;
 						PRODUCT_BUNDLE_IDENTIFIER = "dev.abeisonai.worklouder.creatormicrostudio";
 						PRODUCT_NAME = "AbesWorkLouderCreatorMicroStudio";
 						PRODUCT_MODULE_NAME = CreatorMicroStudio;
@@ -349,20 +396,25 @@
 						ENABLE_HARDENED_RUNTIME = YES;
 						SWIFT_OPTIMIZATION_LEVEL = "-O";
 						ONLY_ACTIVE_ARCH = NO;
+						WL_APP_DISPLAY_NAME = "Abe's WorkLouder Creator Micro Studio";
+						WL_BUILD_CHANNEL = Stable;
+						WL_INSPECTOR_BUNDLE_IDENTIFIER = "dev.abeisonai.worklouder.inspector";
+						WL_INSPECTOR_PRODUCT_NAME = "AbesWorkLouderCreatorMicroStudioInspector";
 					}; name = Release; };
 		F8A2E44EF5004F3B89290AA0 /* Build configurations */ = { isa = XCConfigurationList; buildConfigurations = (1EAF48A8576F4F2E9BC1E2EA, 9E5F824317A94CAD900856DB,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		D67B2C02DAA344969CD01EB3 /* Debug */ = { isa = XCBuildConfiguration; buildSettings = {
-						ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+						ASSETCATALOG_COMPILER_APPICON_NAME = AppIconDev;
 						CODE_SIGN_STYLE = Automatic;
-						CURRENT_PROJECT_VERSION = 1;
+						CURRENT_PROJECT_VERSION = 7;
 						ENABLE_PREVIEWS = YES;
 						GENERATE_INFOPLIST_FILE = NO;
 						INFOPLIST_FILE = "Apps/Inspector/Info.plist";
 						LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
 						MACOSX_DEPLOYMENT_TARGET = 13.0;
-						MARKETING_VERSION = 0.1.0;
-						PRODUCT_BUNDLE_IDENTIFIER = "dev.abeisonai.worklouder.inspector";
-						PRODUCT_NAME = "AbesWorkLouderCreatorMicroStudioInspector";
+						MARKETING_VERSION = 0.3.1;
+						PRODUCT_BUNDLE_IDENTIFIER = "dev.abeisonai.worklouder.inspector.dev";
+						PRODUCT_NAME = "AbesWorkLouderCreatorMicroStudioInspectorDev";
+						SKIP_INSTALL = YES;
 						PRODUCT_MODULE_NAME = Inspector;
 						SDKROOT = macosx;
 						SUPPORTED_PLATFORMS = macosx;
@@ -372,19 +424,22 @@
 						ENABLE_HARDENED_RUNTIME = NO;
 						SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 						ONLY_ACTIVE_ARCH = YES;
+						WL_APP_DISPLAY_NAME = "Abe's WorkLouder Creator Micro Studio Inspector Dev";
+						WL_BUILD_CHANNEL = Dev;
 					}; name = Debug; };
 		253B70AE162D4B909F11376F /* Release */ = { isa = XCBuildConfiguration; buildSettings = {
 						ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 						CODE_SIGN_STYLE = Automatic;
-						CURRENT_PROJECT_VERSION = 1;
+						CURRENT_PROJECT_VERSION = 7;
 						ENABLE_PREVIEWS = YES;
 						GENERATE_INFOPLIST_FILE = NO;
 						INFOPLIST_FILE = "Apps/Inspector/Info.plist";
 						LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
 						MACOSX_DEPLOYMENT_TARGET = 13.0;
-						MARKETING_VERSION = 0.1.0;
+						MARKETING_VERSION = 0.3.1;
 						PRODUCT_BUNDLE_IDENTIFIER = "dev.abeisonai.worklouder.inspector";
 						PRODUCT_NAME = "AbesWorkLouderCreatorMicroStudioInspector";
+						SKIP_INSTALL = YES;
 						PRODUCT_MODULE_NAME = Inspector;
 						SDKROOT = macosx;
 						SUPPORTED_PLATFORMS = macosx;
@@ -394,6 +449,8 @@
 						ENABLE_HARDENED_RUNTIME = YES;
 						SWIFT_OPTIMIZATION_LEVEL = "-O";
 						ONLY_ACTIVE_ARCH = NO;
+						WL_APP_DISPLAY_NAME = "Abe's WorkLouder Creator Micro Studio Inspector";
+						WL_BUILD_CHANNEL = Stable;
 					}; name = Release; };
 		015238BD6D21423FA5C7AA35 /* Build configurations */ = { isa = XCConfigurationList; buildConfigurations = (D67B2C02DAA344969CD01EB3, 253B70AE162D4B909F11376F,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		AAD2873B0B0041D490B37BCE /* Inspector target proxy */ = { isa = PBXContainerItemProxy; containerPortal = 1CE7954713FA4987B63470F2; proxyType = 1; remoteGlobalIDString = 18095EE6A2E542DBBA35820C; remoteInfo = Inspector; };

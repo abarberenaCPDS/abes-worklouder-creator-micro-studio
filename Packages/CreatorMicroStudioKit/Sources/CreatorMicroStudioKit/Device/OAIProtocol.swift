@@ -195,17 +195,12 @@ public enum Pad {
     public static func agentSlot(for key: Int) -> Int? {
         agentKeyIDs.firstIndex(of: key)
     }
-    /// Toggles the GitButler stack for the focused agent's directory. First key
-    /// of row 3, so the agent block above it stays whole.
-    public static let stackKeyID = 6
     /// Cycles the tabs of the focused tab's workspace in Herdr. Second key of
-    /// row 3, next to the stack key.
+    /// row 3.
     public static let tabCycleKeyID = 7
-    /// Lands the focused agent's stack onto the target, bottom branch first.
-    /// Third key of row 3, next to the tab-cycle key.
-    public static let landKeyID = 8
-    /// Every physical keycap has a host-side action value editable in Studio.
-    /// The hardware keymap stays unchanged; these actions are dispatched by the bridge.
+    /// The keycaps — the inputs with LEDs, and so the only ids lighting ever
+    /// paints. Every input, keys and controls, takes a host-side action; see
+    /// `configurableInputIDs`. The hardware keymap stays unchanged either way.
     public static let configurableActionKeyIDs = Array(0..<keyCount)
     /// The paired voice keys on the bottom row. They are two separate physical
     /// keycaps with one default action, and can still be configured separately.
@@ -217,13 +212,14 @@ public enum Pad {
     /// The keys bound to `KV_OAI_AG*`, and so the only ones that can be lit.
     /// With the macro and voice keys this is now the whole pad.
     public static let boundKeyIDs =
-        agentKeyIDs + [stackKeyID, tabCycleKeyID, landKeyID] + voiceKeyIDs + macroKeyIDs
+        agentKeyIDs + [6, tabCycleKeyID, 8] + voiceKeyIDs + macroKeyIDs
 
     // MARK: Dial and joystick
 
     /// The dial and joystick emit keycodes like the keys do, so binding them
-    /// to the AG codes above 12 turns rotations and deflections into the same
-    /// `v.oai.hid` reports. These IDs never light — nothing is under them.
+    /// to the AG codes above 12 turns rotations, the dial push (`dialPushID`,
+    /// 19) and deflections into the same `v.oai.hid` reports. These IDs never
+    /// light — nothing is under them.
     public static let dialUpID = 13     // encoder, clockwise detent
     public static let dialDownID = 14   // encoder, counter-clockwise detent
     /// The joystick's four cardinal sectors, named by the angle fraction at
@@ -233,7 +229,7 @@ public enum Pad {
     public static let joySouthID = 17   // sector centred on 0.75
     public static let joyEastID = 18    // sector centred on 0.0
 
-    public enum JoystickDirection {
+    public enum JoystickDirection: Sendable {
         case north, south, east, west
 
         public init?(keyID: Int) {

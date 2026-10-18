@@ -8,6 +8,7 @@ struct ContentView: View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
                 connectionBar
+                temporaryBanner
 
                 if model.needsInputMonitoringHelp && !model.connected {
                     inputMonitoringBanner
@@ -64,6 +65,33 @@ struct ContentView: View {
         .padding(.vertical, 12)
         .background(.bar)
         .overlay(alignment: .bottom) { Divider() }
+    }
+
+    /// Always shown: nothing the Inspector paints survives a Studio repaint.
+    private var temporaryBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "clock.arrow.circlepath")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Temporary — changes last until Studio repaints. Save to Studio to keep them.")
+                    .font(.callout.weight(.medium))
+                    .fixedSize(horizontal: false, vertical: true)
+                if let message = model.studioSaveMessage {
+                    Label(message, systemImage: model.studioSaveFailed ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(model.studioSaveFailed ? Color.red : Color.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.08))
+        .overlay(alignment: .bottom) { Divider() }
+        .accessibilityElement(children: .combine)
     }
 
     private var inputMonitoringBanner: some View {
@@ -156,9 +184,16 @@ struct ContentView: View {
                             .disabled(!model.connected || model.selection.isEmpty)
                         Button("Clear selected") { model.clearSelection() }
                             .disabled(!model.connected || model.selection.isEmpty)
+                        Button("Save to Studio") { model.saveSelectionToStudio() }
+                            .disabled(model.selection.isEmpty)
+                            .help("Keep this look as the at-rest colour of the selected keys in Studio's lighting.")
                     }
-                    Button("Apply to whole keys zone") { model.applyKeysZone() }
-                        .disabled(!model.connected)
+                    HStack(spacing: 8) {
+                        Button("Apply to whole keys zone") { model.applyKeysZone() }
+                            .disabled(!model.connected)
+                        Button("Save to Studio") { model.saveKeysZoneToStudio() }
+                            .help("Keep this look as Studio's custom keys-zone backlight.")
+                    }
                     Text("The zone is a single colour across all keys. Per-key colours override it.")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -171,9 +206,13 @@ struct ContentView: View {
                     }
                     slider("Brightness", $model.ambientBrightness)
                     slider("Speed", $model.ambientSpeed)
-                    Button("Apply underglow") { model.applyAmbient() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(!model.connected)
+                    HStack(spacing: 8) {
+                        Button("Apply underglow") { model.applyAmbient() }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!model.connected)
+                        Button("Save to Studio") { model.saveUnderglowToStudio() }
+                            .help("Keep this look as Studio's custom underglow.")
+                    }
                 }
 
                 section("Everything") {

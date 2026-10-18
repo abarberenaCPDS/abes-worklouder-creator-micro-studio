@@ -52,25 +52,28 @@ final class PadEmulatorTests: XCTestCase {
         let config = try await KeymapManager.read(device)
         XCTAssertFalse(KeymapManager.isAgentKeymapApplied(config))
 
-        let changed = try await KeymapManager.apply(device)
-        XCTAssertTrue(changed)
+        let outcome = try await KeymapManager.apply(device, timing: .immediate)
+        XCTAssertEqual(outcome, .applied)
+        XCTAssertTrue(outcome.wroteFlash)
         for key in Pad.boundKeyIDs {
             XCTAssertTrue(emulator.bound.contains(key), "key \(key) should be bound")
         }
-        // The dial and the joystick's cardinals bind too.
-        XCTAssertTrue(emulator.bound.isSuperset(of: [Pad.dialUpID, Pad.dialDownID,
+        // The dial, its push and the joystick's cardinals bind too: every
+        // configurable input reports.
+        XCTAssertTrue(emulator.bound.isSuperset(of: [Pad.dialUpID, Pad.dialDownID, Pad.dialPushID,
                                                      Pad.joyNorthID, Pad.joyEastID,
                                                      Pad.joySouthID, Pad.joyWestID]))
+        XCTAssertEqual(emulator.bound, Set(Pad.configurableInputIDs))
     }
 
     func testBoundKeyLightsAndUnboundKeyStaysDarkWithoutComplaint() async throws {
         let (device, emulator) = try connected()
-        _ = try await KeymapManager.apply(device)
+        _ = try await KeymapManager.apply(device, timing: .immediate)
 
-        // Key 19 is inside the firmware's id space but not on the pad, so the
-        // app never binds it — the perfect stand-in for an unbound key.
+        // Every id up to AG19 is bound now (19 is the dial push), so id 20 —
+        // past the firmware's table — stands in for an unbound key.
         let threads = [OAI.Thread(id: 0, color: 0xFF0000, brightness: 1, effect: .solid),
-                       OAI.Thread(id: 19, color: 0x00FF00, brightness: 1, effect: .solid)]
+                       OAI.Thread(id: 20, color: 0x00FF00, brightness: 1, effect: .solid)]
         let result = try await device.callAsync(OAI.methodThreads,
                                                 params: OAI.threadsParams(threads))
         // The firmware says ok to both, which is exactly the trap.
@@ -79,12 +82,12 @@ final class PadEmulatorTests: XCTestCase {
         XCTAssertEqual(emulator.keys[0]?.color, 0xFF0000)
         XCTAssertTrue(emulator.keys[0]?.isLit == true)
         XCTAssertTrue(emulator.bound.contains(0))
-        XCTAssertFalse(emulator.bound.contains(19), "key 19 is not on the pad")
+        XCTAssertFalse(emulator.bound.contains(20), "id 20 is not on the pad")
     }
 
     func testOmittedFieldsLeaveThatAspectAlone() async throws {
         let (device, emulator) = try connected()
-        _ = try await KeymapManager.apply(device)
+        _ = try await KeymapManager.apply(device, timing: .immediate)
 
         _ = try await device.callAsync(OAI.methodThreads, params: OAI.threadsParams(
             [OAI.Thread(id: 2, color: 0x123456, brightness: 1, effect: .solid, speed: 0.4)]))
@@ -107,7 +110,7 @@ final class PadEmulatorTests: XCTestCase {
     /// The whole point of the virtual pad: pressing a key drives the app.
     func testPressingABoundKeyPushesAHIDReport() async throws {
         let (device, emulator) = try connected()
-        _ = try await KeymapManager.apply(device)
+        _ = try await KeymapManager.apply(device, timing: .immediate)
 
         let press = expectation(description: "press reported")
         var seen: [Int] = []
@@ -126,6 +129,38 @@ final class PadEmulatorTests: XCTestCase {
         XCTAssertEqual(seen, [4])
     }
 
+    /// The dial push reports as AG19 once bound; on a stock pad it is a
+    /// play/pause keystroke and reports nothing.
+    func testDialPushReportsOnceBound() async throws {
+        let (device, emulator) = try connected()
+        var seen: [Int] = []
+        device.onNotification = { method, params in
+            guard method == OAI.notifyHID,
+                  let dict = params as? [String: Any],
+                  (dict["act"] as? Int) == 1,
+                  let index = OAI.agIndex(dict["k"] as? String)
+            else { return }
+            seen.append(index)
+        }
+        emulator.press(Pad.dialPushID)
+        XCTAssertEqual(seen, [])
+
+        _ = try await KeymapManager.apply(device, timing: .immediate)
+        let press = expectation(description: "push reported")
+        device.onNotification = { method, params in
+            guard method == OAI.notifyHID,
+                  let dict = params as? [String: Any],
+                  (dict["act"] as? Int) == 1,
+                  let index = OAI.agIndex(dict["k"] as? String)
+            else { return }
+            seen.append(index)
+            press.fulfill()
+        }
+        emulator.press(Pad.dialPushID)
+        await fulfillment(of: [press], timeout: 2)
+        XCTAssertEqual(seen, [19])
+    }
+
     /// An unbound key sends a keystroke on real hardware, not a report.
     func testPressingAnUnboundKeyReportsNothing() throws {
         let (device, emulator) = try connected()
@@ -139,7 +174,7 @@ final class PadEmulatorTests: XCTestCase {
 
     func testResetReturnsAStockPad() async throws {
         let (device, emulator) = try connected()
-        _ = try await KeymapManager.apply(device)
+        _ = try await KeymapManager.apply(device, timing: .immediate)
         XCTAssertFalse(emulator.bound.isEmpty)
 
         emulator.reset()

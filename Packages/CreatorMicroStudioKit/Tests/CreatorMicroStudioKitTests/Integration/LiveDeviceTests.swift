@@ -20,7 +20,7 @@ final class LiveDeviceTests: LiveIntegrationTestCase {
         return device
     }
 
-    func testDeviceKeymapHasTheStackKeyBound() async throws {
+    func testDeviceKeymapHasKey6Bound() async throws {
         try requireLiveIntegrationOptIn()
         let device = try connected()
         defer { device.disconnect(reason: nil) }
@@ -29,7 +29,7 @@ final class LiveDeviceTests: LiveIntegrationTestCase {
         let keymap = try XCTUnwrap(KeymapManager.activeLayerKeymap(config))
         keymap.enumerated().forEach { print("row \($0.offset): \($0.element)") }
 
-        let at = try XCTUnwrap(Pad.position(of: Pad.stackKeyID))
+        let at = try XCTUnwrap(Pad.position(of: 6))
         XCTAssertEqual(keymap[at.row][at.column], "KV_OAI_AG06")
         XCTAssertTrue(KeymapManager.isAgentKeymapApplied(config))
     }

@@ -71,6 +71,11 @@ final class AppModel: ObservableObject {
     @Published var ambientBrightness: Double = 1
     @Published var ambientSpeed: Double = 0.5
 
+    // Save to Studio
+    /// Result of the last "Save to Studio", shown under the Temporary banner.
+    @Published private(set) var studioSaveMessage: String?
+    @Published private(set) var studioSaveFailed = false
+
     // Log
     @Published private(set) var entries: [LogEntry] = []
     @Published var visibleKinds: Set<LogEntry.Kind> = Set(LogEntry.Kind.allCases).subtracting([.raw])
@@ -80,8 +85,22 @@ final class AppModel: ObservableObject {
     private let device = WLDevice()
     private let maxEntries = 2000
     private var walkTask: Task<Void, Never>?
+    private let store: StudioConfigStore
 
-    init() {
+    /// What each zone was last set to. `rgbcfg` always carries both zones, so
+    /// applying one has to resend the other or it goes dark. There is no read
+    /// RPC; both start dark because the Studio bridge blacks out the whole pad
+    /// before handing it over, and only change when the Inspector applies a
+    /// zone itself. `connect()` resets them, so a long-lived model never
+    /// carries zones over from an earlier session.
+    private var keysZone: OAI.Zone = .dark
+    private var ambientZone: OAI.Zone = .dark
+
+    init(store: StudioConfigStore = .standard) {
+        self.store = store
+        let saved = LightingPreferences.load(from: store)
+        seedUnderglowEditor(from: saved)
+
         device.onTX = { [weak self] method, params, id in
             self?.log(.tx, "\(method)  #\(id)", self?.encode(params) ?? "")
         }
@@ -131,6 +150,8 @@ final class AppModel: ObservableObject {
         do {
             try device.connect()
             connected = true
+            keysZone = .dark
+            ambientZone = .dark
             lastError = nil
             deviceName = device.info?.product ?? "—"
             if let i = device.info {
@@ -250,30 +271,116 @@ final class AppModel: ObservableObject {
             OAI.Thread(id: $0, brightness: 0, effect: .off, syncKeys: false, syncAmbient: false)
         }
         send(threads: threads)
+        keysZone = .dark
+        ambientZone = .dark
         device.call(OAI.methodRGBConfig, params: OAI.rgbConfigParams(keys: .dark, ambient: .dark))
     }
 
+    /// Sets the underglow and resends the keys zone as it was.
     func applyAmbient() {
-        let zone = OAI.Zone(
+        ambientZone = OAI.Zone(
             effect: ambientEffect,
             brightness: ambientBrightness,
             speed: ambientSpeed,
             magic: 1,
             color: ambientColor.packedRGB
         )
-        // Leave the keys zone dark so it does not compete with per-key colours.
-        device.call(OAI.methodRGBConfig, params: OAI.rgbConfigParams(keys: .dark, ambient: zone))
+        device.call(OAI.methodRGBConfig, params: OAI.rgbConfigParams(keys: keysZone, ambient: ambientZone))
     }
 
+    /// Sets the keys zone from the key editor and resends the underglow as it was.
     func applyKeysZone() {
-        let zone = OAI.Zone(
+        keysZone = OAI.Zone(
             effect: editEffect,
             brightness: editBrightness,
             speed: editSpeed,
             magic: 1,
             color: editColor.packedRGB
         )
-        device.call(OAI.methodRGBConfig, params: OAI.rgbConfigParams(keys: zone, ambient: .dark))
+        device.call(OAI.methodRGBConfig, params: OAI.rgbConfigParams(keys: keysZone, ambient: ambientZone))
+    }
+
+    // MARK: - Save to Studio
+
+    // Everything above is temporary: it lasts until the Studio bridge (or any
+    // other client) repaints. These write Studio's lighting preferences in
+    // config.json instead — read-modify-write, so the rest of the file and
+    // the other lighting fields stay as they are. The standalone Inspector is
+    // a separate process writing the same file; StudioConfigStore's file lock
+    // keeps the two from interleaving, Studio's Lighting saves merge against
+    // the file, and Studio rereads it when it becomes active or the bridge
+    // starts again after the Inspector hands the pad back.
+
+    /// Saves the key editor's look as the at-rest look of every selected key.
+    func saveSelectionToStudio() {
+        let ids = selection.filter { Pad.configurableActionKeyIDs.contains($0) }.sorted()
+        guard !ids.isEmpty else {
+            reportSave(failed: true, "Select at least one key to save.")
+            return
+        }
+        let look = editorLook
+        saveToStudio(ids.count == 1 ? "key \(ids[0])" : "keys \(ids.map(String.init).joined(separator: ", "))") {
+            for id in ids { $0.keys[id] = look }
+        }
+    }
+
+    /// Saves the underglow editor as Studio's custom underglow.
+    func saveUnderglowToStudio() {
+        let look = LightingPreferences.Look(
+            color: ambientColor.packedRGB,
+            effect: ambientEffect,
+            brightness: ambientBrightness,
+            speed: ambientSpeed
+        )
+        saveToStudio("underglow (custom)") {
+            $0.underglow = .init(mode: .custom, look: look)
+        }
+    }
+
+    /// Saves the key editor's look as Studio's custom keys-zone backlight.
+    func saveKeysZoneToStudio() {
+        let look = editorLook
+        saveToStudio("keys zone (custom backlight)") {
+            $0.backlight = .init(mode: .custom, look: look)
+        }
+    }
+
+    private var editorLook: LightingPreferences.Look {
+        LightingPreferences.Look(
+            color: editColor.packedRGB,
+            effect: editEffect,
+            brightness: editBrightness,
+            speed: editSpeed
+        )
+    }
+
+    private func saveToStudio(_ what: String, _ body: (inout LightingPreferences) -> Void) {
+        do {
+            try LightingPreferences.update(in: store, body)
+            reportSave(failed: false, "Saved \(what) to Studio. Studio paints it when it takes the pad back.")
+            log(.info, "saved to Studio", "\(what) → \(store.path)")
+        } catch {
+            reportSave(failed: true, "Could not save \(what) to Studio: \(error.localizedDescription)")
+            log(.error, "save to Studio failed", error.localizedDescription)
+        }
+    }
+
+    private func reportSave(failed: Bool, _ message: String) {
+        studioSaveFailed = failed
+        studioSaveMessage = message
+    }
+
+    /// Starts the underglow editor's controls from Studio's saved custom
+    /// underglow. The zone bookkeeping stays dark: that is what the pad shows
+    /// when the Studio hands it over.
+    private func seedUnderglowEditor(from prefs: LightingPreferences) {
+        if prefs.underglow.mode == .custom {
+            let look = prefs.underglow.look
+            ambientColor = Color(packedRGB: look.color)
+            ambientEffect = look.effect
+            ambientBrightness = look.brightness ?? 1
+            ambientSpeed = look.speed ?? prefs.speed
+        }
     }
 
     /// Walk one lit key across the pad — the test that proves id → key mapping.

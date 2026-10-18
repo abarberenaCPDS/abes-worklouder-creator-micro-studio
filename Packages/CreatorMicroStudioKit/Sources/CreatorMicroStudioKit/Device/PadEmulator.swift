@@ -36,7 +36,8 @@ public final class PadEmulator: ObservableObject {
     /// accepts up to AG19 and so does this.
     @Published public private(set) var keys: [Int: Key] = [:]
     /// Which key ids are bound to an AG keycode on the active layer, and so
-    /// can light at all. Includes the dial (13, 14) and joystick (15–18).
+    /// can light at all. Includes the dial (13, 14, push 19) and joystick
+    /// (15–18), which report presses but have nothing to light.
     @Published public private(set) var bound: Set<Int> = []
     @Published public private(set) var keysZone = OAI.Zone.dark
     @Published public private(set) var ambientZone = OAI.Zone.dark
@@ -47,6 +48,12 @@ public final class PadEmulator: ObservableObject {
     var onNotify: ((String, Any?) -> Void)?
 
     private var keymap: [String: Any] = PadEmulator.stockKeymap()
+
+    /// Mimics firmware that answers `{"ok":1}` to a keymap write but keeps
+    /// its own code on the dial push instead of `KV_OAI_AG19`.
+    var keepsDialPushCode = false
+    /// `fs.write` calls answered so far — each one is a flash write on a pad.
+    private(set) var keymapWrites = 0
 
     public init() { refreshBinding() }
 
@@ -88,7 +95,8 @@ public final class PadEmulator: ObservableObject {
                   let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)),
                   let config = object as? [String: Any]
             else { return (nil, "bad payload") }
-            keymap = config
+            keymapWrites += 1
+            keymap = keepsDialPushCode ? Self.restoringDialPush(in: config, from: keymap) : config
             refreshBinding()
             note("fs.write keymap.json — \(bound.count) keys now bound")
             return (["ok": 1], nil)
@@ -162,7 +170,8 @@ public final class PadEmulator: ObservableObject {
 
     // MARK: - Input
 
-    /// Press a key on the virtual pad.
+    /// Press a key — or the dial, its push, or a joystick sector, by input
+    /// id — on the virtual pad.
     ///
     /// Only AG-bound keys report themselves; the rest send a keystroke to the
     /// OS, which is not this object's business — so pressing an unbound key
@@ -218,6 +227,31 @@ public final class PadEmulator: ObservableObject {
         if traffic.count > 80 { traffic.removeFirst(traffic.count - 80) }
     }
 
+    /// `next` with the active layer's dial push slot put back as it was.
+    private static func restoringDialPush(in next: [String: Any], from previous: [String: Any]) -> [String: Any] {
+        func push(_ config: [String: Any]) -> String? {
+            guard let layout = KeymapManager.activeLayerLayout(config),
+                  let dial = (layout["encoders"] as? [[String]])?.first, dial.count > 2
+            else { return nil }
+            return dial[2]
+        }
+        let old = push(previous) ?? "KC_MPLY"
+        let index = next["activeProfileId"] as? Int ?? 0
+        guard var profiles = next["profiles"] as? [[String: Any]], !profiles.isEmpty else { return next }
+        let profileIndex = index < profiles.count ? index : 0
+        guard var layers = profiles[profileIndex]["layers"] as? [[String: Any]], !layers.isEmpty,
+              var layout = layers[0]["layout"] as? [String: Any],
+              var encoders = layout["encoders"] as? [[String]], !encoders.isEmpty, encoders[0].count > 2
+        else { return next }
+        encoders[0][2] = old
+        layout["encoders"] = encoders
+        layers[0]["layout"] = layout
+        profiles[profileIndex]["layers"] = layers
+        var result = next
+        result["profiles"] = profiles
+        return result
+    }
+
     /// Reset to a factory pad: stock keymap, every light off.
     public func reset() {
         keymap = PadEmulator.stockKeymap()
@@ -229,8 +263,8 @@ public final class PadEmulator: ObservableObject {
         note("reset to the stock F-key keymap")
     }
 
-    /// The map a pad ships with: F13–F24 across the keys, volume on the dial,
-    /// a numpad ring on the joystick. Matches a real `fs.read` off a stock
+    /// The map a pad ships with: F13–F24 across the keys, volume and
+    /// play/pause on the dial, a numpad ring on the joystick. Matches a real `fs.read` off a stock
     /// device, which is what makes the app's binding step meaningful here.
     static func stockKeymap() -> [String: Any] {
         [

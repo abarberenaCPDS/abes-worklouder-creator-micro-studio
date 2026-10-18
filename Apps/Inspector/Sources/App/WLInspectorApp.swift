@@ -19,7 +19,7 @@ struct WLInspectorApp: App {
     @StateObject private var model = AppModel()
 
     var body: some Scene {
-        WindowGroup("Abe’s WorkLouder Creator Micro Studio Inspector") {
+        WindowGroup(Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Abe’s WorkLouder Creator Micro Studio Inspector") {
             ContentView()
                 .environmentObject(model)
                 .onAppear { model.connect() }

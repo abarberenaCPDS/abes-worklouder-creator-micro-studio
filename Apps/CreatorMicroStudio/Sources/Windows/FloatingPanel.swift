@@ -3,8 +3,8 @@ import SwiftUI
 import WebKit
 import CreatorMicroStudioKit
 
-/// A floating, non-activating HTML window: the shared chrome behind the pad's
-/// panel keys. The window deliberately never becomes key: you are looking at
+/// A floating, non-activating HTML window: the chrome behind the pad's
+/// model and effort panel. The window deliberately never becomes key: you are looking at
 /// it *from* the terminal you were already typing in, and stealing focus to
 /// show a status view would mean two keystrokes to get back to where you were.
 @MainActor
@@ -17,9 +17,9 @@ final class FloatingPanel: NSObject {
     /// whether dismissal is allowed right now, so this asks rather than closes.
     var onDismissRequested: (() -> Void)?
 
-    /// Owners whose content is a short list rather than command output can ask
-    /// for something narrower; the stack graph needs the full width, a model
-    /// list would just be mostly margin. Set before the first `present`.
+    /// Owners whose content is a short list can ask for something narrower;
+    /// a model list at full width would just be mostly margin. Set before
+    /// the first `present`.
     var preferredWidth: CGFloat = FloatingPanel.width
 
     private var panel: NSPanel?
@@ -226,23 +226,7 @@ final class FloatingPanel: NSObject {
 enum PanelHTML {
 
     static func note(_ text: String) -> String {
-        "<p class=\"note\">\(AnsiHTML.escapeHTML(text))</p>"
-    }
-
-    /// A `$ but ...` line introducing a command's output.
-    static func command(_ text: String) -> String {
-        "<div class=\"cmd\">$ \(AnsiHTML.escapeHTML(text))</div>"
-    }
-
-    /// A command's combined output, colour intact. Success keeps `pre`'s
-    /// columns — a stack graph only reads if they hold. A failure is one long
-    /// sentence, and clipping it behind a scrollbar hides the half that says
-    /// what to do about it, so it wraps instead.
-    static func output(_ output: GitButler.StatusOutput) -> String {
-        let rendered = AnsiHTML.render(output.text)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !rendered.isEmpty else { return note("(no output)") }
-        return "<pre\(output.succeeded ? "" : " class=\"wrap\"")>\(rendered)</pre>"
+        "<p class=\"note\">\(HTMLText.escape(text))</p>"
     }
 
     static func abbreviate(_ path: String) -> String {
@@ -294,14 +278,8 @@ extension FloatingPanel {
       #close:hover { color: #1a1f28; }
       main { flex: 1 1 auto; min-height: 0; padding: 12px 18px; overflow-y: auto; }
       pre { margin: 0; white-space: pre; overflow-x: auto; }
-      pre.wrap { white-space: pre-wrap; overflow-x: hidden; word-break: break-word; }
       .note { margin: 2px 0; color: #6f7684; white-space: pre-wrap; }
-      .cmd { margin: 14px 0 4px; font-weight: 700; color: #1a1f28; }
-      .cmd:first-child { margin-top: 0; }
       .b { font-weight: 700; }
-      .d { opacity: 0.55; }
-      .i { font-style: italic; }
-      .u { text-decoration: underline; }
       footer {
         flex: none;
         padding: 9px 18px 11px;
@@ -372,20 +350,17 @@ extension FloatingPanel {
     """
 }
 
-/// Canvas-only stand-in for the AppKit/WebKit stack, land, and model panels.
-/// It reuses the production HTML shell and has no native message bridge.
+/// Canvas-only stand-in for the AppKit/WebKit model panel. It reuses the
+/// production HTML shell and has no native message bridge.
 private struct FloatingPanelCanvasPreview: View {
     var body: some View {
         PanelHTMLCanvasView(
-            title: "creator-micro-studio",
-            subtitle: "~/Projects/creator-micro-studio",
-            bodyHTML: PanelHTML.command("but status")
-                + "<pre>On branch <span class=\"b\">main</span>\nChanges ready to land: 2 commits\nWorking tree clean</pre>"
-                + PanelHTML.command("but stack")
-                + "<pre>feature/input-monitoring\n└── fix/request-access</pre>",
-            footer: "press the stack key again to dismiss"
+            title: "Claude Code",
+            subtitle: "model · effort high",
+            bodyHTML: "<pre>  1  fable\n<span class=\"b\">▸ 2  opus</span>\n  3  sonnet\n  4  haiku</pre>",
+            footer: "joystick up/down to choose · right to confirm"
         )
-        .frame(width: 780, height: 410)
+        .frame(width: 520, height: 300)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(color: .black.opacity(0.2), radius: 16, y: 8)
     }

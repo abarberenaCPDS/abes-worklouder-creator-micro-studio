@@ -123,8 +123,8 @@ final class StatusMapperTests: XCTestCase {
         for (slot, key) in Pad.agentKeyIDs.enumerated() {
             XCTAssertEqual(Pad.agentSlot(for: key), slot)
         }
-        XCTAssertNil(Pad.agentSlot(for: Pad.stackKeyID))
-        XCTAssertNil(Pad.agentSlot(for: Pad.landKeyID))
+        XCTAssertNil(Pad.agentSlot(for: 6))
+        XCTAssertNil(Pad.agentSlot(for: 8))
     }
 
     // MARK: - AG key names

@@ -42,7 +42,7 @@
        allowLocationSimulation = "YES">
       <PreActions>
          <ExecutionAction ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
-            <ActionContent title = "Stop previous HID clients" scriptText = "/usr/bin/swift &quot;${PROJECT_DIR}/scripts/stop-conflicting-apps.swift&quot; dev.abeisonai.worklouder.creatormicrostudio dev.abeisonai.worklouder.inspector">
+            <ActionContent title = "Stop previous HID clients" scriptText = "/usr/bin/swift &quot;${PROJECT_DIR}/scripts/stop-conflicting-apps.swift&quot; dev.abeisonai.worklouder.creatormicrostudio dev.abeisonai.worklouder.creatormicrostudio.dev dev.abeisonai.worklouder.inspector dev.abeisonai.worklouder.inspector.dev">
                <EnvironmentBuildable>
                   <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "D9704086CE8644ADAA92F199" BuildableName = "AbesWorkLouderCreatorMicroStudio.app" BlueprintName = "CreatorMicroStudio" ReferencedContainer = "container:AbesWorkLouderCreatorMicroStudio.xcodeproj">
                   </BuildableReference>
