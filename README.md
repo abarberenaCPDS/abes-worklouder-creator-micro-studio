@@ -24,7 +24,10 @@ side. It reads Herdr's socket directly and drives the pad over raw HID.
 
 ## 📦 Install
 
-Download, unzip, drag `AbesWorkLouderCreatorMicroStudio.app` to Applications, and launch it. macOS
+Download, unzip, drag `AbesWorkLouderCreatorMicroStudio.app` to Applications, and launch it.
+(The download link serves the latest published GitHub release, which may be
+older than the code here; to install the current version, build the **Stable**
+app as described in [Stable and Dev apps](#-stable-and-dev-apps).) macOS
 will ask for **Input Monitoring**: choose Open System Settings and turn the
 studio on. It keeps looking for the pad and connects once the grant applies;
 if macOS offers to quit and reopen the app, accept.
@@ -344,11 +347,10 @@ to read it from.
 
 ## 🔏 Why it must be bundled and signed
 
-Input Monitoring is granted to the app’s code signature. For local development,
-Xcode can run the app directly; for a distributable build, use an appropriate
-Apple Development or Developer ID signing identity in Xcode. Ad-hoc signing is
-useful for local builds, but its identity can change between builds and may
-require granting Input Monitoring again. The Xcode archive includes the nested
+Input Monitoring is granted to the app’s code signature. The project signs
+both apps with an Apple Development team, so a grant survives rebuilds; an
+ad-hoc build (no team) changes identity on every build and has to be granted
+again each time. To give the app to other Macs, use a Developer ID identity. The Xcode archive includes the nested
 Inspector app and signs it as part of the host app build. See
 [docs/signing.md](docs/signing.md) for the permission helper and
 troubleshooting.
@@ -397,8 +399,19 @@ page shows the version and says when it is the Dev build. Both read the same
 `~/.config/creator-micro-studio/config.json` controls and lighting, and only one can drive
 the pad at a time — the Run scheme quits both channels' apps before it launches.
 
-To update the stable app, run `./scripts/archive.sh` (or Product → Archive),
-export the app, and replace the copy in Applications.
+To install or update the stable app, quit the running Studio and any Dev copy,
+then:
+
+```bash
+./scripts/archive.sh
+ditto ".build/archives/AbesWorkLouderCreatorMicroStudio.xcarchive/Products/Applications/AbesWorkLouderCreatorMicroStudio.app" \
+      "/Applications/AbesWorkLouderCreatorMicroStudio.app"
+```
+
+Launch it from Applications; Welcome shows the version without "· Dev". Builds
+are signed with the project's Apple Development team, so grants survive
+updates. See [docs/signing.md](docs/signing.md) for signing, permissions and
+working with Xcode when the project file changes.
 
 Command-line build and test:
 

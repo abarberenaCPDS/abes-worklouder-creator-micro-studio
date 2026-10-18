@@ -35,8 +35,11 @@ The grant then silently stops applying, and macOS does not show its
 | **Apple Development** (a team selected) | your certificate + bundle ID | Grants survive rebuilds of the same bundle ID. |
 | **Developer ID** (for others) | your Developer ID certificate + bundle ID | Same as above, and Gatekeeper accepts it on other Macs once notarized. |
 
-Today the project uses **Automatic** signing with no team, so builds are ad-hoc.
-Selecting a team (section 3) fixes this.
+This repo now has a team set (`DEVELOPMENT_TEAM` in `project.pbxproj`) for the
+Debug and Release configurations of both targets, so Xcode signs every build
+with an Apple Development certificate and grants survive rebuilds. On a Mac
+that isn't signed in to that team, Xcode can't use it: pick your own team as in
+section 3, or builds fall back to ad-hoc.
 
 Check what a build is signed with:
 
@@ -72,6 +75,14 @@ Changing a bundle ID resets that app's grants, so avoid it.
 ---
 
 ## 3. One-time setup: choose a signing team
+
+Already done for this repo (Debug and Release, both targets). Follow these
+steps on another Mac or if you change teams.
+
+In **Signing & Capabilities** the **All** tab shows three sections:
+**Signing (Debug)**, used by ▶ Run (the Dev app); **Signing (Release)**, used
+by Archive (the Stable app); and **Hardened Runtime (Release)**, which you
+leave as it is. Set the Team in **both** signing sections.
 
 Do this once in Xcode, using your own Apple ID. A free Apple account is enough
 for local development.
@@ -126,7 +137,7 @@ With a team selected, rebuilding keeps the grants.
 ### Install or update the Stable app on this Mac
 
 1. Quit the running Stable Studio (menu-bar icon → Quit) and any Dev copy.
-2. Build an archive:
+2. Build an archive (it is signed with the team, see section 3):
    ```bash
    ./scripts/archive.sh
    # → .build/archives/AbesWorkLouderCreatorMicroStudio.xcarchive
@@ -226,7 +237,27 @@ AppIntents.framework dependency found”), so there is nothing to fix.
 
 ---
 
-## 6. Later: sharing the app with other Macs
+## 6. Working with Xcode while the project file changes
+
+The project file (`project.pbxproj`) is sometimes edited outside Xcode, for
+example when files are added or build settings change from the command line.
+Xcode keeps its own copy in memory and does not notice:
+
+- Its editor reports **"Cannot find '…' in scope"** for types that clearly exist.
+  This is a stale index, not a build error: command-line builds succeed.
+- If you change any setting in Xcode at that point, Xcode can save its old copy
+  over the updated file and drop the new files.
+
+So, after the project file changes on disk: **quit Xcode and reopen the
+project** before Run or before touching settings. Clean the build folder
+(⇧⌘K) only if errors still don't make sense; delete
+`~/Library/Developer/Xcode/DerivedData/AbesWorkLouderCreatorMicroStudio-*`
+as a last resort. Routine builds don't need a clean.
+
+Xcode also rewrites the whole project file in its own format the first time
+it saves it; that diff is large but harmless.
+
+## 7. Later: sharing the app with other Macs
 
 Local development and installing on your own Mac don't need any of this. To give
 the app to someone else without Gatekeeper warnings you need:

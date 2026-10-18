@@ -570,9 +570,17 @@ known.
 
 ### The joystick
 
-The joystick is radial: eight sectors, each with an angle range `a1..a2`
-expressed as a **fraction of a full turn**, where **0 is east and the angle
-increases counter-clockwise**.
+The joystick is radial: the stock layout has eight sectors, each with an angle
+range `a1..a2` expressed as a **fraction of a full turn**, where **0 is east and
+the angle increases counter-clockwise**.
+
+A profile can be set up with fewer. One real profile has two: up
+(`a1 0.1875 … a2 0.3125`) and one sector covering everything else
+(`a1 0.3125 … a2 0.1875`, wrapping through zero, so it centres on 0.75 —
+down). Such a profile has no left or right: those directions never report, and
+any push except up arrives as down. Studio binds the cardinal sectors that
+exist, treats missing ones as unavailable rather than as a refused binding,
+and never adds sectors on its own.
 
 | sector centre | direction | stock keycode |
 |---|---|---|
