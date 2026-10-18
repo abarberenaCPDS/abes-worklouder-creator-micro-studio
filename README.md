@@ -14,6 +14,8 @@ when you press the key.
 It is the bridge itself — no Node, no daemon, nothing to install on the Herdr
 side. It reads Herdr's socket directly and drives the pad over raw HID.
 
+![Screenshot of Abe's WorkLouder Creator Micro Studio workspace](docs/cover.png)
+
 **[Download the latest release](https://github.com/abarberenaCPDS/abes-worklouder-creator-micro-studio/releases/latest/download/CreatorMicroStudio.zip)**
 · [website](https://abarberenacpds.github.io/abes-worklouder-creator-micro-studio/)
 · [hacking guide](docs/hacking.md)
