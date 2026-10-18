@@ -1,4 +1,4 @@
-# Abe's WorkLouder Creator Micro Studio
+# 🎛️ Abe's WorkLouder Creator Micro Studio
 
 *All work & ~~no~~ play*<br>
 *Human after all* `¯\_(ツ)_/¯`
@@ -22,7 +22,7 @@ side. It reads Herdr's socket directly and drives the pad over raw HID.
 
 ---
 
-## Install
+## 📦 Install
 
 Download, unzip, drag `AbesWorkLouderCreatorMicroStudio.app` to Applications, and launch it. macOS
 will ask for **Input Monitoring**. Grant it, then toggle the studio off and on
@@ -41,7 +41,7 @@ You will also need a Creator Micro 2 and a running Herdr server with agents in
 it. Quit Work Louder's Input app and the Codex desktop app while you use this —
 all three drive the same lighting and will overwrite each other.
 
-## What the pad does
+## 🎛️ What the pad does
 
 **The icon** shows state at a glance: dimmed when off, a coloured dot when
 running — green all idle, amber something working, red something needs you —
@@ -76,7 +76,7 @@ independently; either can be assigned Voice Control.
 **The dial** tunes reasoning effort. **The joystick** switches model: it puts
 the model list on screen, north and south move, east confirms, west cancels.
 
-### The stack key
+### 🧩 The stack key
 
 It floats `but status` in the middle of the screen; press again to put it away.
 The window never takes focus — you are reading it *from* the terminal you were
@@ -89,7 +89,7 @@ dismiss.
 invisible here. Homebrew and Cargo locations are checked directly, then your
 login shell is asked. Set `WL_BUT_PATH` to skip all of it.
 
-## The panel
+## 🪟 The panel
 
 Click the menu-bar icon for quick status and controls. **Studio** opens the
 full Device First workspace with the larger physical pad map, live agent cards,
@@ -106,7 +106,7 @@ the menu-bar app starts. The splash uses the same locked app icon: Pure Pad
 artwork with an `ABE'S` bezel engraving. Studio, standalone Inspector, and the
 website favicons use that same artwork.
 
-## The Inspector
+## 🔍 The Inspector
 
 Choose **Inspector** in the Studio sidebar to view raw device traffic, decode
 notifications, and drive per-key lighting, zones, key walks, and raw JSON-RPC
@@ -118,7 +118,7 @@ bundle ID, and requests its own grant; Studio and the embedded sidebar Inspector
 share Studio's grant. macOS may require changing a previously denied grant in
 System Settings.
 
-## Key values
+## 🎹 Key values
 
 Choose **Edit key values** in Studio to inspect and change the action associated
 with any physical key. This includes the built-in GitButler stack, tab-cycle,
@@ -128,7 +128,7 @@ assigned slot, while other keys return focus to the agent currently selected in
 Herdr. Values are saved to `~/.config/creator-micro-studio/config.json`; changes are host-side
 and do not rewrite the device keymap or consume flash.
 
-## No pad to hand
+## 🎮 No pad to hand
 
 Tick **Emulate the pad** in the panel and a window opens with a virtual Creator
 Micro 2 in it. The bridge drives its lights exactly as it drives the hardware,
@@ -155,7 +155,7 @@ The emulator lives inside the Studio process. The Inspector sidebar shares that
 process; the separately bundled Inspector helper is a different process and
 still needs the physical pad.
 
-## Configuration
+## ⚙️ Configuration
 
 Everything works without a config file. Studio saves action and prompt overrides
 to `config.json` in
@@ -202,7 +202,7 @@ to read it from.
 | `WL_BUT_PATH` | the GitButler binary, skipping the search |
 | `HERDR_SOCKET_PATH` | the Herdr socket |
 
-## Why it must be bundled and signed
+## 🔏 Why it must be bundled and signed
 
 Input Monitoring is granted to the app’s code signature. For local development,
 Xcode can run the app directly; for a distributable build, use an appropriate
@@ -211,16 +211,16 @@ useful for local builds, but its identity can change between builds and may
 require granting Input Monitoring again. The Xcode archive includes the nested
 Inspector app and signs it as part of the host app build.
 
-## Only one bridge at a time
+## 🔌 Only one bridge at a time
 
 Work Louder's Input app and the Codex desktop app drive this same pad. Running
 two at once means they overwrite each other. The panel detects this — the device
 is opened shared, so we receive other clients' replies, and a response id we
 never issued is a reliable tell.
 
-## Development
+## 🛠️ Development
 
-### Open and run in Xcode
+### 🧑‍💻 Open and run in Xcode
 
 The GUI apps are native Xcode targets; reusable device and integration code is
 in a local Swift package. Open the project:
