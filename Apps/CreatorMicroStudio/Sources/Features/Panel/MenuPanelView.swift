@@ -159,7 +159,7 @@ struct MenuPanelView: View {
         let action = bridge.keyBindings.action(for: index)
         // Key index and agent slot are different orderings — the top row is
         // wired right to left — so the slot lookup goes through the pad map.
-        let slot = Pad.agentSlot(for: index)
+        let slot = bridge.agentSlot(for: index)
         let agent = slot.flatMap { $0 < bridge.agents.count ? bridge.agents[$0] : nil }
 
         return Button {
@@ -174,7 +174,7 @@ struct MenuPanelView: View {
                 )
         }
         .buttonStyle(.plain)
-        .disabled(action == .none || (action == .focusAgent && Pad.agentSlot(for: index) != nil && agent == nil))
+        .disabled(action == .none || (action == .focusAgent && slot != nil && agent == nil))
         .accessibilityLabel(helpText(index, agent: agent))
         .help(helpText(index, agent: agent))
     }
@@ -185,10 +185,13 @@ struct MenuPanelView: View {
         case .none:
             return "Key \(index), no action"
         case .focusAgent:
-            if let agent { return "\(agent.displayName) — \(agent.status)" }
-            if Pad.agentSlot(for: index) != nil { return "Key \(index), no agent in this slot" }
+            if let agent { return "\(agent.displayName) — \(agent.status); key colour shows agent status" }
+            if bridge.agentSlot(for: index) != nil { return "Key \(index), no agent in this slot" }
             return "Key \(index), return focus to the currently selected Herdr agent"
         default:
+            if let slot = bridge.agentSlot(for: index) {
+                return "Key \(index), layout slot \(slot + 1); \(action.summary) takes precedence over agent status."
+            }
             return "Key \(index), \(action.summary)"
         }
     }
@@ -203,31 +206,53 @@ struct MenuPanelView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 14).padding(.vertical, 10)
             } else {
-                ForEach(Array(bridge.agents.prefix(Pad.agentKeyIDs.count).enumerated()), id: \.offset) { index, agent in
-                    Button {
-                        Task { await bridge.focusSlot(index) }
-                    } label: {
-                        HStack(spacing: 9) {
-                            Circle()
-                                .fill(bridge.keyColors[Pad.agentKeyIDs[index]] ?? Color.secondary.opacity(0.3))
-                                .frame(width: 9, height: 9)
-                            Text("\(index)")
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.tertiary)
-                            Text(agent.shortName).lineLimit(1)
-                            Spacer(minLength: 8)
-                            Text(agent.status)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(Array(bridge.agents.enumerated()), id: \.offset) { index, agent in
+                            Button {
+                                Task { await bridge.focusSlot(index) }
+                            } label: {
+                                HStack(spacing: 9) {
+                                    Circle()
+                                        .fill(agentStatusKeyColor(for: index) ?? Color.secondary.opacity(0.3))
+                                        .frame(width: 9, height: 9)
+                                    Text("\(index + 1)")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundStyle(.tertiary)
+                                    Text(agent.shortName).lineLimit(1)
+                                    Spacer(minLength: 8)
+                                    Text("\(agent.status) · \(agentStatusKeyLabel(for: index))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                .contentShape(Rectangle())
+                                .padding(.horizontal, 14).padding(.vertical, 5)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .contentShape(Rectangle())
-                        .padding(.horizontal, 14).padding(.vertical, 5)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.vertical, 4)
                 }
-                .padding(.vertical, 4)
+                .frame(maxHeight: 220)
             }
         }
+    }
+
+    private func agentStatusKey(for slot: Int) -> Int? {
+        guard bridge.agentKeyIDs.indices.contains(slot) else { return nil }
+        let key = bridge.agentKeyIDs[slot]
+        return bridge.action(for: key) == .focusAgent ? key : nil
+    }
+
+    private func agentStatusKeyColor(for slot: Int) -> Color? {
+        agentStatusKey(for: slot).flatMap { bridge.keyColors[$0] }
+    }
+
+    private func agentStatusKeyLabel(for slot: Int) -> String {
+        guard bridge.agentKeyIDs.indices.contains(slot) else { return "no key" }
+        let key = bridge.agentKeyIDs[slot]
+        return bridge.action(for: key) == .focusAgent ? "key \(key) status" : "key \(key) action"
     }
 
     // MARK: - Other states

@@ -121,15 +121,18 @@ public enum StatusMapper {
         return "unknown"
     }
 
-    /// One thread entry per agent key: agent slot N takes `Pad.agentKeyIDs[N]`
-    /// — reading order on the pad — and unused keys go dark. Always returns
-    /// exactly `Pad.agentKeyIDs.count` entries, so a vanished agent actively
+    /// One thread entry per configured agent key: slot N takes
+    /// `agentKeyIDs[N]` — reading order on the pad — and unused keys go dark.
+    /// Always returns exactly `agentKeyIDs.count` entries, so a vanished agent actively
     /// clears its key rather than leaving it stale.
+    /// The stock layout is only a compatibility default; runtime callers should
+    /// pass the active bindings' `agentKeyIDs`.
     public static func threads(
         for agents: [HerdrAgent],
-        _ cfg: BridgeConfig = BridgeConfig()
+        _ cfg: BridgeConfig = BridgeConfig(),
+        agentKeyIDs: [Int] = Pad.agentKeyIDs
     ) -> [OAI.Thread] {
-        Pad.agentKeyIDs.enumerated().map { slot, id in
+        agentKeyIDs.enumerated().map { slot, id in
             guard slot < agents.count else {
                 // An empty slot shows the key's saved look, if it has one.
                 return cfg.keyLook(for: id) ?? OAI.Thread(id: id, brightness: 0, effect: .off)
@@ -152,17 +155,20 @@ public enum StatusMapper {
     /// Otherwise a saved per-key look wins, and otherwise the action's
     /// category colour, dimmed so a bound key reads as bound without
     /// competing with agent status. Inputs without LEDs get nil.
+    /// The stock layout is only a compatibility default; runtime callers
+    /// should pass the active bindings' `agentKeyIDs`.
     public static func actionThread(
         for action: InputAction,
         key: Int,
         state: ActionLightState = ActionLightState(),
-        _ cfg: BridgeConfig = BridgeConfig()
+        _ cfg: BridgeConfig = BridgeConfig(),
+        agentKeyIDs: [Int] = Pad.agentKeyIDs
     ) -> OAI.Thread? {
         guard Pad.configurableActionKeyIDs.contains(key) else { return nil }
         switch action {
         case .voice where state.voiceActive:
             return voiceThread(id: key, active: true, cfg)
-        case .focusAgent where Pad.agentSlot(for: key) != nil:
+        case .focusAgent where agentKeyIDs.contains(key):
             return nil
         default:
             break
@@ -241,8 +247,8 @@ public enum StatusMapper {
         )
     }
 
-    /// Focus-agent actions on keys outside the six agent slots get a quiet
-    /// blue light. The six dedicated agent keys keep their live status colors.
+    /// Focus-agent actions on keys outside the configured agent slots get a
+    /// quiet blue light. Configured keys keep their live status colors.
     public static func focusAgentThread(id: Int, _ cfg: BridgeConfig = BridgeConfig()) -> OAI.Thread {
         OAI.Thread(
             id: id,

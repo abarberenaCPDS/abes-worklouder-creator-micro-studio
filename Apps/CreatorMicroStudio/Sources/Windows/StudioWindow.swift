@@ -846,34 +846,56 @@ private struct StudioDashboardView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 8)
             } else {
-                ForEach(Array(bridge.agents.prefix(Pad.agentKeyIDs.count).enumerated()), id: \.offset) { slot, agent in
-                    Button {
-                        Task { await bridge.focusSlot(slot) }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Circle()
-                                .fill(bridge.keyColors[Pad.agentKeyIDs[slot]] ?? Color.secondary.opacity(0.32))
-                                .frame(width: 11, height: 11)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(agent.shortName).lineLimit(1)
-                                Text(agent.status).font(.caption).foregroundStyle(.secondary)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(Array(bridge.agents.enumerated()), id: \.offset) { slot, agent in
+                            Button {
+                                Task { await bridge.focusSlot(slot) }
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Circle()
+                                        .fill(agentStatusKeyColor(for: slot) ?? Color.secondary.opacity(0.32))
+                                        .frame(width: 11, height: 11)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(agent.shortName).lineLimit(1)
+                                        Text("\(agent.status) · \(agentStatusKeyLabel(for: slot))")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 8)
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.caption.weight(.medium))
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .contentShape(Rectangle())
+                                .padding(.vertical, 5)
                             }
-                            Spacer(minLength: 8)
-                            Image(systemName: "arrow.up.right")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.tertiary)
+                            .buttonStyle(.plain)
+                            .disabled(!bridge.isRunning)
+                            if slot < bridge.agents.count - 1 { Divider() }
                         }
-                        .contentShape(Rectangle())
-                        .padding(.vertical, 5)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!bridge.isRunning)
-                    if slot < min(bridge.agents.count, Pad.agentKeyIDs.count) - 1 { Divider() }
                 }
+                .frame(maxHeight: 260)
             }
         }
         .padding(18)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func agentStatusKey(for slot: Int) -> Int? {
+        guard bridge.agentKeyIDs.indices.contains(slot) else { return nil }
+        let key = bridge.agentKeyIDs[slot]
+        return bridge.action(for: key) == .focusAgent ? key : nil
+    }
+
+    private func agentStatusKeyColor(for slot: Int) -> Color? {
+        agentStatusKey(for: slot).flatMap { bridge.keyColors[$0] }
+    }
+
+    private func agentStatusKeyLabel(for slot: Int) -> String {
+        guard bridge.agentKeyIDs.indices.contains(slot) else { return "no status key" }
+        let key = bridge.agentKeyIDs[slot]
+        return bridge.action(for: key) == .focusAgent ? "key \(key) · status" : "key \(key) · action"
     }
 
     private var statusLegend: some View {
@@ -937,6 +959,10 @@ private struct StudioPadMapView: View {
 
     private func keyButton(_ key: Int) -> some View {
         let color = bridge.keyColors[key]
+        let action = bridge.keyBindings.action(for: key)
+        let slot = bridge.agentSlot(for: key)
+        let isAgentStatus = slot != nil && action == .focusAgent
+        let colorRoleLabel = isAgentStatus ? slot.map { "STATUS S\($0 + 1)" } ?? "ACTION" : "ACTION"
         let description = keyDescription(key)
         return Button {
             bridge.handleKeyPress(key)
@@ -952,6 +978,16 @@ private struct StudioPadMapView: View {
                         .font(.system(.caption, design: .monospaced).weight(.medium))
                         .foregroundStyle(color == nil ? .white.opacity(0.5) : .black.opacity(0.62))
                         .padding(8)
+                }
+                .overlay(alignment: .topLeading) {
+                    Text(colorRoleLabel)
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(isAgentStatus ? Color.black.opacity(0.48) : Color.orange.opacity(0.82),
+                                    in: Capsule())
+                        .padding(6)
                 }
                 .frame(width: keyWidth, height: keyHeight)
         }
@@ -1032,10 +1068,15 @@ private struct StudioPadMapView: View {
 
     private func keyDescription(_ key: Int) -> String {
         let action = bridge.keyBindings.action(for: key)
-        if action == .focusAgent,
-           let slot = Pad.agentSlot(for: key), slot < bridge.agents.count {
-            let agent = bridge.agents[slot]
-            return "Key \(key), \(agent.displayName), \(agent.status)"
+        if let slot = bridge.agentSlot(for: key) {
+            if action == .focusAgent, slot < bridge.agents.count {
+                let agent = bridge.agents[slot]
+                return "Key \(key), agent status for slot \(slot + 1): \(agent.displayName), \(agent.status)"
+            }
+            if action == .focusAgent {
+                return "Key \(key), agent status for slot \(slot + 1); no current agent in this slot."
+            }
+            return "Key \(key), layout slot \(slot + 1), action color: \(action.summary); this action takes precedence over agent status."
         }
         return inputDescription(key)
     }
@@ -1047,7 +1088,7 @@ private struct StudioPadMapView: View {
         case .none:
             return "\(name), no action"
         case .focusAgent:
-            return Pad.agentSlot(for: input) == nil
+            return bridge.agentSlot(for: input) == nil
                 ? "\(name), return focus to the currently selected Herdr agent"
                 : "\(name), focus its assigned agent"
         default:

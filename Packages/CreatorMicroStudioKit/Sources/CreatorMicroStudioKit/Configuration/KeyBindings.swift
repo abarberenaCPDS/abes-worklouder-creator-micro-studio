@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 
 /// Host-side actions for every physical input, plus the tune lists.
 ///
@@ -32,6 +33,8 @@ public struct KeyBindings: Sendable, Equatable {
     /// Explicit per-input overrides; inputs absent here use
     /// `InputAction.defaultAction(for:)`.
     public private(set) var actions: [Int: InputAction]
+    /// Keycaps assigned to agent slots, in physical reading order.
+    public private(set) var agentKeyIDs: [Int]
     /// The legacy `"keys"` text, after defaults and `"10+11"` expansion.
     public private(set) var texts: [Int: String]
     /// The models the model actions cycle through in Claude Code, in order.
@@ -56,12 +59,14 @@ public struct KeyBindings: Sendable, Equatable {
 
     public init(
         actions: [Int: InputAction] = [:],
+        agentKeyIDs: [Int] = Pad.agentKeyIDs,
         texts: [Int: String] = KeyBindings.defaults,
         claudeModels: [String] = KeyBindings.defaultClaudeModels,
         claudeEfforts: [String] = KeyBindings.defaultClaudeEfforts,
         codexModels: [String] = []
     ) {
         self.actions = actions.filter { Pad.configurableInputIDs.contains($0.key) }
+        self.agentKeyIDs = Self.normalizedAgentKeys(agentKeyIDs) ?? Pad.agentKeyIDs
         self.texts = texts
         self.claudeModels = claudeModels
         self.claudeEfforts = claudeEfforts
@@ -77,6 +82,9 @@ public struct KeyBindings: Sendable, Equatable {
 
     /// The configured override, or nil when the input runs its default.
     public func actionOverride(for input: Int) -> InputAction? { actions[input] }
+
+    /// The configured agent slot for a keycap, or nil when it is not assigned.
+    public func agentSlot(for key: Int) -> Int? { agentKeyIDs.firstIndex(of: key) }
 
     /// Whether the input differs from its default.
     public func isCustomised(_ input: Int) -> Bool {
@@ -141,11 +149,44 @@ public struct KeyBindings: Sendable, Equatable {
         let codexModels = (codex?["models"] as? [String])?.filter { !$0.isEmpty }
         return KeyBindings(
             actions: actions,
+            agentKeyIDs: parseAgentKeys(json["agentKeys"]),
             texts: texts,
             claudeModels: models?.isEmpty == false ? models! : defaultClaudeModels,
             claudeEfforts: efforts?.isEmpty == false ? efforts! : defaultClaudeEfforts,
             codexModels: codexModels ?? []
         )
+    }
+
+    /// Missing or malformed layouts preserve the safe stock layout. An empty
+    /// array is valid and intentionally assigns no keycaps.
+    private static func parseAgentKeys(_ value: Any?) -> [Int] {
+        guard let values = value as? [Any] else { return Pad.agentKeyIDs }
+        var keys: [Int] = []
+        for value in values {
+            guard let key = exactInteger(value), Pad.configurableActionKeyIDs.contains(key) else {
+                return Pad.agentKeyIDs
+            }
+            keys.append(key)
+        }
+        return normalizedAgentKeys(keys) ?? Pad.agentKeyIDs
+    }
+
+    private static func exactInteger(_ value: Any) -> Int? {
+        guard let number = value as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID(),
+              number.doubleValue.isFinite,
+              number.doubleValue.rounded(.towardZero) == number.doubleValue,
+              number.doubleValue >= 0,
+              number.doubleValue < Double(Pad.keyCount)
+        else { return nil }
+        return number.intValue
+    }
+
+    /// Validates, de-duplicates, and canonicalizes into physical reading order.
+    private static func normalizedAgentKeys(_ keys: [Int]) -> [Int]? {
+        guard keys.allSatisfy(Pad.configurableActionKeyIDs.contains) else { return nil }
+        let selected = Set(keys)
+        return Pad.displayRows.flatMap { $0 }.filter(selected.contains)
     }
 
     /// Flattens an input-keyed map with a fixed precedence, so the result
@@ -168,12 +209,57 @@ public struct KeyBindings: Sendable, Equatable {
 
     public enum EditError: LocalizedError, Equatable {
         case notConfigurable(Int)
+        case invalidAgentKey(Int)
+        case configurationChanged
 
         public var errorDescription: String? {
             switch self {
             case .notConfigurable(let input):
                 return "Input \(input) is not a physical control that can be remapped."
+            case .invalidAgentKey(let key):
+                return "Key \(key) is not a physical keycap that can be assigned to an agent slot."
+            case .configurationChanged:
+                return "The agent-key layout or key actions changed since you reviewed them. Review the current bindings and try again."
             }
+        }
+    }
+
+    /// Saves a physical-reading-order layout and resets newly assigned keys to
+    /// Focus agent in the same atomic config update. Removed keys keep their
+    /// current actions. Duplicate ids are collapsed and keys are normalized to
+    /// physical reading order. When supplied, `expectedBindings` prevents
+    /// replacing a layout or key action changed since it was reviewed.
+    public static func setAgentKeys(
+        _ keys: [Int],
+        expectedBindings: KeyBindings? = nil,
+        store: StudioConfigStore = .standard
+    ) throws {
+        guard let normalized = normalizedAgentKeys(keys) else {
+            let invalid = keys.first(where: { !Pad.configurableActionKeyIDs.contains($0) }) ?? -1
+            throw EditError.invalidAgentKey(invalid)
+        }
+        try store.update { json in
+            if let expectedBindings {
+                let current = parse(json)
+                let keycapsMatch = current.agentKeyIDs == expectedBindings.agentKeyIDs
+                    && Pad.configurableActionKeyIDs.allSatisfy {
+                        current.action(for: $0) == expectedBindings.action(for: $0)
+                    }
+                guard keycapsMatch else { throw EditError.configurationChanged }
+            }
+            let existing = parseAgentKeys(json["agentKeys"])
+            let newlyAdded = normalized.filter { !existing.contains($0) }
+            var actions = json["actions"] as? [String: Any] ?? [:]
+            for key in newlyAdded {
+                for name in actions.keys where Int(name) == nil
+                    && Pad.inputIDs(forConfigKey: name) == [key] {
+                    actions.removeValue(forKey: name)
+                }
+                actions[String(key)] = InputAction.focusAgent.configValue
+            }
+            json["agentKeys"] = normalized
+            if actions.isEmpty { json.removeValue(forKey: "actions") }
+            else { json["actions"] = actions }
         }
     }
 

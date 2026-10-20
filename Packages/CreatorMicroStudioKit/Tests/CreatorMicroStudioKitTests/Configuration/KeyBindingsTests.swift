@@ -11,10 +11,41 @@ final class KeyBindingsTests: XCTestCase {
 
     func testMissingFileMeansDefaults() {
         let bindings = KeyBindings()
+        XCTAssertEqual(bindings.agentKeyIDs, [1, 0, 2, 3, 4, 5])
         XCTAssertEqual(bindings.text(for: 9), "Open a pull request for this branch")
         XCTAssertEqual(bindings.text(for: 12), "Run the test suite")
         XCTAssertNil(bindings.text(for: 10))
         XCTAssertTrue(bindings.actions.isEmpty)
+    }
+
+    func testAgentKeyLayoutParsingAndValidation() {
+        XCTAssertEqual(parse(#"{"agentKeys": [12, 1, 12, 0]}"#).agentKeyIDs, [1, 0, 12],
+                       "duplicates collapse and physical reading order is canonical")
+        XCTAssertEqual(parse(#"{"agentKeys": []}"#).agentKeyIDs, [], "empty is intentional")
+        for invalid in [#"{"agentKeys": "1,2"}"#,
+                        #"{"agentKeys": [1, 13]}"#,
+                        #"{"agentKeys": [-1]}"#,
+                        #"{"agentKeys": [1.5]}"#,
+                        #"{"agentKeys": [true]}"#] {
+            XCTAssertEqual(parse(invalid).agentKeyIDs, Pad.agentKeyIDs, invalid)
+        }
+    }
+
+    func testLoadingLayoutDoesNotReplaceCustomActionsOnDefaultAgentKeys() {
+        let bindings = parse(#"{"agentKeys": [1, 0], "actions": {"0": "zoom-pane", "1": "next-tab"}}"#)
+        XCTAssertEqual(bindings.agentKeyIDs, [1, 0])
+        XCTAssertEqual(bindings.action(for: 0), .zoomPane)
+        XCTAssertEqual(bindings.action(for: 1), .nextTab)
+        XCTAssertEqual(bindings.agentSlot(for: 1), 0)
+        XCTAssertEqual(bindings.agentSlot(for: 0), 1)
+        XCTAssertNil(bindings.agentSlot(for: 2))
+    }
+
+    func testAllThirteenKeysNormalizeToPhysicalReadingOrder() {
+        let reversed = Array((0..<Pad.keyCount).reversed())
+        let bindings = KeyBindings(agentKeyIDs: reversed)
+        XCTAssertEqual(bindings.agentKeyIDs, Pad.displayRows.flatMap { $0 })
+        XCTAssertEqual(bindings.agentKeyIDs.count, 13)
     }
 
     /// The fallback prompt strings stay limited to the keys that have stock
@@ -266,6 +297,99 @@ final class KeyBindingsTests: XCTestCase {
         XCTAssertEqual(loaded.action(for: 5), .nextWorkspace)
         XCTAssertEqual(loaded.action(for: 19), .mediaKey(.mute))
         XCTAssertEqual(loaded.claudeModels, ["opus"])
+    }
+
+    func testSetAgentKeysAtomicallySavesLayoutAndResetsOnlyNewKeys() throws {
+        let store = temporaryStore()
+        try write(#"{"agentKeys": [1, 0], "actions": {"1": "zoom-pane", "0": "next-tab", "6": "shell-command"}, "other": 42}"#, to: store)
+
+        try KeyBindings.setAgentKeys([6, 0, 6, 12], store: store)
+
+        let object = try object(store)
+        XCTAssertEqual(object["agentKeys"] as? [Int], [0, 6, 12])
+        XCTAssertEqual(object["other"] as? Int, 42)
+        let actions = try XCTUnwrap(object["actions"] as? [String: Any])
+        XCTAssertEqual(actions["6"] as? String, "focus-agent", "new slot replaces its previous action")
+        XCTAssertEqual(actions["12"] as? String, "focus-agent")
+        XCTAssertEqual(actions["1"] as? String, "zoom-pane", "removed keys keep their action")
+        XCTAssertEqual(actions["0"] as? String, "next-tab", "existing layout keys keep their action")
+
+        let loaded = KeyBindings.load(from: store)
+        XCTAssertEqual(loaded.agentKeyIDs, [0, 6, 12])
+        XCTAssertEqual(loaded.action(for: 6), .focusAgent)
+        XCTAssertEqual(loaded.action(for: 1), .zoomPane)
+        XCTAssertEqual(loaded.action(for: 0), .nextTab)
+    }
+
+    func testSetAgentKeysAllowsEmptyAndResettingToDefaultLayout() throws {
+        let store = temporaryStore()
+        try KeyBindings.setAgentKeys([], store: store)
+        XCTAssertEqual(KeyBindings.load(from: store).agentKeyIDs, [])
+        try KeyBindings.setAgentKeys(Pad.agentKeyIDs, store: store)
+        XCTAssertEqual(KeyBindings.load(from: store).agentKeyIDs, Pad.agentKeyIDs)
+    }
+
+    func testSetAgentKeysRejectsNonKeycapsWithoutWriting() throws {
+        let store = temporaryStore()
+        try write(#"{"agentKeys": [1], "other": "untouched"}"#, to: store)
+        XCTAssertThrowsError(try KeyBindings.setAgentKeys([1, 13], store: store))
+        XCTAssertEqual(try object(store)["agentKeys"] as? [Int], [1])
+        XCTAssertEqual(try object(store)["other"] as? String, "untouched")
+    }
+
+    func testSetAgentKeysLeavesMalformedConfigUntouchedOnSaveFailure() throws {
+        let store = temporaryStore()
+        try write("{ not json", to: store)
+        XCTAssertThrowsError(try KeyBindings.setAgentKeys([2, 3], store: store))
+        XCTAssertEqual(try String(contentsOfFile: store.path), "{ not json")
+    }
+
+    func testSetAgentKeysRejectsChangedLayoutWithoutChangingBytes() throws {
+        let store = temporaryStore()
+        try write(#"{"agentKeys": [1, 0], "actions": {"6": "shell-command"}}"#, to: store)
+        let expected = KeyBindings.load(from: store)
+        try store.update { $0["agentKeys"] = [1, 0, 2] }
+        let before = try Data(contentsOf: URL(fileURLWithPath: store.path))
+
+        XCTAssertThrowsError(try KeyBindings.setAgentKeys([3, 4], expectedBindings: expected, store: store)) {
+            XCTAssertEqual($0 as? KeyBindings.EditError, .configurationChanged)
+        }
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: store.path)), before)
+    }
+
+    func testSetAgentKeysRejectsChangedKeycapActionWithoutChangingBytes() throws {
+        let store = temporaryStore()
+        try write(#"{"agentKeys": [1, 0], "actions": {"6": "zoom-pane"}}"#, to: store)
+        let expected = KeyBindings.load(from: store)
+        try store.update { json in
+            var actions = json["actions"] as? [String: Any] ?? [:]
+            actions["6"] = "shell-command"
+            json["actions"] = actions
+        }
+        let before = try Data(contentsOf: URL(fileURLWithPath: store.path))
+
+        XCTAssertThrowsError(try KeyBindings.setAgentKeys([3, 4], expectedBindings: expected, store: store)) {
+            XCTAssertEqual($0 as? KeyBindings.EditError, .configurationChanged)
+        }
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: store.path)), before)
+    }
+
+    func testSetAgentKeysExpectedBindingsIgnoresLightingAndNonKeyActions() throws {
+        let store = temporaryStore()
+        try write(#"{"agentKeys": [1, 0], "actions": {"6": "zoom-pane"}}"#, to: store)
+        let expected = KeyBindings.load(from: store)
+        try store.update { json in
+            json["lighting"] = ["brightness": 0.5]
+            var actions = json["actions"] as? [String: Any] ?? [:]
+            actions["13"] = "effort-down"
+            json["actions"] = actions
+        }
+
+        try KeyBindings.setAgentKeys([5, 2], expectedBindings: expected, store: store)
+        let json = try object(store)
+        XCTAssertEqual(json["agentKeys"] as? [Int], [2, 5])
+        XCTAssertEqual((json["lighting"] as? [String: Any])?["brightness"] as? Double, 0.5)
+        XCTAssertEqual(((json["actions"] as? [String: Any])?["13"] as? String), "effort-down")
     }
 
     func testResettingRemovesTheOverride() throws {

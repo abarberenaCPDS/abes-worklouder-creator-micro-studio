@@ -139,7 +139,7 @@ public enum OAI {
 // MARK: - Pad geometry
 
 /// The pad's physical key rows, matching the firmware's [2, 4, 4, 3] matrix.
-/// Key index runs row-major from 0, so the six agent keys are 0...5.
+/// Key index runs row-major from 0; the default agent layout uses keycaps 0...5.
 public enum Pad {
     /// Visual positions in the physical device drawing. The dial and joystick
     /// flank the two top keycaps; the bottom-left circle is a case mark, not a key.
@@ -169,7 +169,8 @@ public enum Pad {
     /// The firmware's keycode table goes to AG19, so clear the whole id space
     /// when turning everything off, not just the visible keys.
     public static let maxThreadID = 19
-    /// Agent slot N lights and answers to `agentKeyIDs[N]`, in READING order:
+    /// Legacy/default agent layout. Runtime assignments come from `KeyBindings`.
+    /// Slot N lights and answers to `agentKeyIDs[N]`, in READING order:
     /// left to right, top to bottom as you look at the pad. The firmware's top
     /// row is wired right to left — key 0 is the top-RIGHT key — so reading
     /// order starts 1, 0. The other rows run left to right in index order.
@@ -191,7 +192,9 @@ public enum Pad {
         [.caseMark, .key(10), .key(11), .key(12)],
     ]
 
-    /// The agent slot a key answers for, or nil for non-agent keys.
+    /// The default-layout slot a key answers for, or nil for other keycaps.
+    /// Use `KeyBindings.agentSlot(for:)` for the active configured layout.
+    @available(*, deprecated, message: "Default layout only; use KeyBindings.agentSlot(for:) for configured layouts.")
     public static func agentSlot(for key: Int) -> Int? {
         agentKeyIDs.firstIndex(of: key)
     }

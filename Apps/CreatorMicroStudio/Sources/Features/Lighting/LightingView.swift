@@ -187,6 +187,8 @@ struct LightingView: View {
             LightingPadView(
                 looks: draft.keys,
                 liveColors: bridge.keyColors,
+                keyBindings: bridge.keyBindings,
+                agentKeyIDs: bridge.agentKeyIDs,
                 globalBrightness: draft.brightness,
                 selection: $selectedKeys
             )
@@ -212,7 +214,7 @@ struct LightingView: View {
     @ViewBuilder
     private var keyEditor: some View {
         if selectedKeys.isEmpty {
-            Text("Keys without a fixed colour use the colour of their action, and agent keys show their agent's status.")
+            Text("Keys without a fixed colour use their action colour. A configured key shows agent status only while its action is Focus Agent; an action on that key takes precedence. Key labels identify STATUS versus ACTION colour.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -243,7 +245,7 @@ struct LightingView: View {
 
                 let agentKeys = selectedKeys.filter(showsAgent).sorted()
                 if !agentKeys.isEmpty {
-                    Text("\(agentKeys.count == 1 ? "Key" : "Keys") \(agentKeys.map(String.init).joined(separator: ", ")) \(agentKeys.count == 1 ? "shows" : "show") an agent's status, so the fixed colour only shows while that slot is empty.")
+                    Text("\(agentKeys.count == 1 ? "Key" : "Keys") \(agentKeys.map(String.init).joined(separator: ", ")) \(agentKeys.count == 1 ? "shows" : "show") agent status only while its action is Focus Agent. A fixed colour is visible when that status slot is empty.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -264,7 +266,7 @@ struct LightingView: View {
 
     /// A slot key on Focus Agent: it paints agent status, not its at-rest look.
     private func showsAgent(_ key: Int) -> Bool {
-        Pad.agentSlot(for: key) != nil && bridge.keyBindings.action(for: key) == .focusAgent
+        bridge.agentSlot(for: key) != nil && bridge.keyBindings.action(for: key) == .focusAgent
     }
 
     /// The look of the lowest selected key with one; writes go to every
@@ -604,6 +606,8 @@ private struct UnitSlider: View {
 private struct LightingPadView: View {
     let looks: [Int: LightingPreferences.Look]
     let liveColors: [Int: Color]
+    let keyBindings: KeyBindings
+    let agentKeyIDs: [Int]
     let globalBrightness: Double
     @Binding var selection: Set<Int>
 
@@ -642,6 +646,7 @@ private struct LightingPadView: View {
 
     private func keyButton(_ key: Int) -> some View {
         let look = looks[key]
+        let isAgentStatus = agentKeyIDs.contains(key) && keyBindings.action(for: key) == .focusAgent
         let selected = selection.contains(key)
         let fill: Color = {
             if let look, look.effect != .off {
@@ -668,20 +673,26 @@ private struct LightingPadView: View {
                         .padding(6)
                 }
                 .overlay(alignment: .topLeading) {
-                    if look != nil {
-                        Image(systemName: "pin.fill")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.black.opacity(0.5))
-                            .padding(6)
+                    HStack(spacing: 2) {
+                        if look != nil {
+                            Image(systemName: "pin.fill")
+                                .font(.system(size: 7))
+                        }
+                        Text(isAgentStatus ? "STATUS" : "ACTION")
+                            .font(.system(size: 6, weight: .bold, design: .monospaced))
                     }
+                    .foregroundStyle(look == nil ? .white.opacity(0.62) : .black.opacity(0.62))
+                    .padding(5)
                 }
                 .frame(width: keySize.width, height: keySize.height)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Key \(key)\(look == nil ? "" : ", fixed colour \(hexString(look!.color))")")
+        .accessibilityLabel("Key \(key), \(isAgentStatus ? "agent status" : "action") colour\(look == nil ? "" : ", fixed colour \(hexString(look!.color))")")
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .help(look == nil ? "Key \(key): action colour" : "Key \(key): \(hexString(look!.color)), \(look!.effect.label)")
+        .help(look == nil
+              ? "Key \(key): \(isAgentStatus ? "agent status" : "action") colour"
+              : "Key \(key): fixed \(hexString(look!.color)), \(look!.effect.label); \(isAgentStatus ? "agent status while the slot is occupied" : "action colour")")
     }
 
     private func control(symbol: String, label: String) -> some View {

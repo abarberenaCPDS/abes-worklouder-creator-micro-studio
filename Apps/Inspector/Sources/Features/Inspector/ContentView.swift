@@ -285,7 +285,7 @@ struct PadView: View {
                     ForEach(row) { cell in displayCell(cell) }
                 }
             }
-            Text("The dial and joystick are controls. The circle is a case mark. Key indices are 0-based; agent keys are 0–5.")
+            Text("The dial and joystick are controls. The circle is a case mark. Key indices are 0-based; the Studio's agent layout can use any keycap.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

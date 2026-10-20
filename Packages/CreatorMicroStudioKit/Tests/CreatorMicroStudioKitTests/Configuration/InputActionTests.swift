@@ -75,7 +75,9 @@ final class InputActionTests: XCTestCase {
     }
 
     func testParametersAreClampedAndDefaulted() {
-        XCTAssertEqual(InputAction.parse(configValue: ["type": "focus-slot", "slot": 9]), .focusSlot(6))
+        XCTAssertEqual(InputAction.parse(configValue: ["type": "focus-slot", "slot": 9]), .focusSlot(9))
+        XCTAssertEqual(InputAction.parse(configValue: ["type": "focus-slot", "slot": 13]), .focusSlot(13))
+        XCTAssertEqual(InputAction.parse(configValue: ["type": "focus-slot", "slot": 14]), .focusSlot(13))
         XCTAssertEqual(InputAction.parse(configValue: ["type": "focus-slot"]), .focusSlot(1))
         XCTAssertEqual(InputAction.parse(configValue: ["type": "scroll", "direction": "UP", "amount": 99]),
                        .scroll(.up, amount: 20))

@@ -4,6 +4,40 @@ This project follows [Semantic Versioning](https://semver.org). The version is
 `MARKETING_VERSION` in `AbesWorkLouderCreatorMicroStudio.xcodeproj`, shared by
 the Studio and Inspector targets; `CURRENT_PROJECT_VERSION` is the build number.
 
+## [0.4.0] — 2026-10-20
+
+Version 0.4.0, build 9.
+
+### Added
+
+- **Configurable agent layout in Controls.** Dedicate any of the 13 keycaps to
+  agent slots, in physical reading order, with numbered previews and confirmation
+  before replacing custom actions. Layout and binding changes save together;
+  existing configurations retain their six-key layout and custom actions.
+- Studio, Controls, Lighting, Herdr and the menu-bar panel use the configured
+  assignments. Explicit Focus slot actions support slots 1–13 independently of
+  the number of dedicated keys. Agents without dedicated keys remain visible
+  and still contribute to underglow status.
+
+### Clarified
+
+- The original six slots were a Studio pad-layout choice, not a Herdr limit.
+  Agent layout changes are host-side and do not write the hardware keymap.
+
+## [0.3.2] — 2026-10-20
+
+Version 0.3.2, build 8.
+
+### Fixed
+
+- **Focus Agent now raises the terminal actually running Herdr.** The host app
+  was assumed to be Ghostty, so with iTerm2, Terminal or any other client the
+  tab changed inside Herdr but no window came forward. It is now detected from
+  the running `herdr` client (the GUI ancestor of its process), with the known
+  terminals as a fallback, and all of the app's windows are raised. A press
+  that already had focus still returns quietly. `WL_TERMINAL_BUNDLE_ID` still
+  forces a specific app.
+
 ## [0.3.1] — 2026-10-18
 
 Version 0.3.1, build 7.

@@ -64,8 +64,10 @@ extension Pad {
 
         /// Only keycaps have LEDs; controls never take a lighting thread.
         public var hasLight: Bool { group == .keys }
-        /// The Herdr agent slot (0-based) this key focuses by default.
-        public var agentSlot: Int? { Pad.agentSlot(for: id) }
+        /// Legacy/default-layout metadata for existing UI. Runtime slot
+        /// resolution uses the active `KeyBindings` layout instead.
+        @available(*, deprecated, message: "Default layout only; use KeyBindings.agentSlot(for:) for configured layouts.")
+        public var agentSlot: Int? { Pad.agentKeyIDs.firstIndex(of: id) }
         public var joystickDirection: JoystickDirection? { JoystickDirection(keyID: id) }
     }
 

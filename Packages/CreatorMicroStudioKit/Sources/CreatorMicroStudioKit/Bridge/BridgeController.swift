@@ -27,8 +27,8 @@ public final class BridgeController: ObservableObject {
     @Published public private(set) var deviceName = "—"
     @Published public private(set) var firmware = "—"
     @Published public private(set) var battery: String?
-    /// Every agent Herdr reports, in its sidebar order. Slot N (0-based) is
-    /// element N; agents past the sixth have no key.
+    /// Every agent Herdr reports, in its sidebar order. Configured keycaps map
+    /// slots 0..<agentKeyIDs.count to the corresponding elements.
     @Published public private(set) var agents: [HerdrAgent] = []
     /// The colour each lit key shows (keys that are off are absent).
     @Published public private(set) var keyColors: [Int: Color] = [:]
@@ -104,9 +104,18 @@ public final class BridgeController: ObservableObject {
         HerdrInputMapping.mappings(bindings: keyBindings, agents: agents)
     }
 
-    /// Agents no input reaches, by index into `agents`.
+    /// Configured keycaps in physical reading order, one per agent slot.
+    public var agentKeyIDs: [Int] { keyBindings.agentKeyIDs }
+
+    /// The configured slot of a keycap, or nil when it is not an agent key.
+    public func agentSlot(for key: Int) -> Int? { keyBindings.agentSlot(for: key) }
+
+    /// Agents without a dedicated slot input that can actually fire.
     public var unassignedAgentIndices: [Int] {
-        HerdrInputMapping.unassignedAgentIndices(bindings: keyBindings, agents: agents)
+        var unavailable = Set(absentJoystickInputs)
+        if !dialPushAvailable { unavailable.insert(Pad.dialPushID) }
+        return HerdrInputMapping.unassignedAgentIndices(bindings: keyBindings, agents: agents,
+                                                       unavailableInputs: unavailable)
     }
 
     /// Inputs whose action needs Accessibility and can actually fire: a dial
@@ -492,6 +501,13 @@ public final class BridgeController: ObservableObject {
     /// Several different actions in one write; nil values reset.
     public func setActions(_ changes: [Int: InputAction?]) throws {
         try KeyBindings.setActions(changes, store: store)
+        reloadKeyBindings()
+    }
+
+    /// Saves the agent-key layout and makes newly assigned keys Focus agent.
+    /// Callers should obtain any replacement confirmation before invoking it.
+    public func setAgentKeys(_ keys: [Int], expectedBindings: KeyBindings? = nil) throws {
+        try KeyBindings.setAgentKeys(keys, expectedBindings: expectedBindings, store: store)
         reloadKeyBindings()
     }
 
@@ -893,13 +909,14 @@ public final class BridgeController: ObservableObject {
         let state = StatusMapper.aggregate(agents, config)
         // An agent key bound to anything but Focus agent shows its action
         // instead of its agent.
-        let overriddenAgentKeys = Set(Pad.agentKeyIDs.filter { keyBindings.action(for: $0) != .focusAgent })
-        let agentThreads = StatusMapper.threads(for: agents, config)
+        let overriddenAgentKeys = Set(keyBindings.agentKeyIDs.filter { keyBindings.action(for: $0) != .focusAgent })
+        let agentThreads = StatusMapper.threads(for: agents, config, agentKeyIDs: keyBindings.agentKeyIDs)
             .filter { !overriddenAgentKeys.contains($0.id) }
         let lightState = ActionLightState(voiceActive: voiceActive)
         // Only keycaps have LEDs; the dial and joystick never take a thread.
         let actionThreads = Pad.configurableActionKeyIDs.compactMap { key in
-            StatusMapper.actionThread(for: keyBindings.action(for: key), key: key, state: lightState, config)
+            StatusMapper.actionThread(for: keyBindings.action(for: key), key: key,
+                                      state: lightState, config, agentKeyIDs: keyBindings.agentKeyIDs)
         }
         return (state,
                 agentThreads + actionThreads,
@@ -1027,7 +1044,7 @@ public final class BridgeController: ObservableObject {
 
         switch action {
         case .focusAgent:
-            if let input, let slot = Pad.agentSlot(for: input) {
+            if let input, let slot = keyBindings.agentSlot(for: input) {
                 Task { await focusSlot(slot) }
             } else {
                 Task { await focusCurrentAgent() }
@@ -1178,7 +1195,8 @@ public final class BridgeController: ObservableObject {
         }
     }
 
-    /// Slot N (0-based) is the Nth key in reading order (`Pad.agentKeyIDs[N]`)
+    /// Slot N (0-based) is the Nth configured key in reading order
+    /// (`keyBindings.agentKeyIDs[N]`)
     /// — the same mapping the lighting uses, which is what makes the key you
     /// look at the key you press.
     ///
@@ -1223,29 +1241,67 @@ public final class BridgeController: ObservableObject {
         }
     }
 
-    /// The app Herdr's panes live in. Override with `WL_TERMINAL_BUNDLE_ID` if
-    /// they live somewhere other than Ghostty.
-    public static let defaultTerminalBundleID = "com.mitchellh.ghostty"
+    /// The app Herdr's panes live in, detected from the running `herdr` client
+    /// (see `TerminalTarget`). Override with `WL_TERMINAL_BUNDLE_ID` to force a
+    /// specific terminal.
+    private var terminalHost: (bundleID: String, at: Date)?
+    /// How long a detected host is trusted before the process table is read
+    /// again, so a key press does not enumerate processes every time.
+    private static let terminalHostCacheLifetime: TimeInterval = 5
+    /// The "no terminal found" note is worth saying once, not on every press.
+    private var warnedMissingTerminal = false
 
-    /// Brings the terminal forward unless it is already the active app.
+    /// Brings the terminal running Herdr's panes forward unless it is already
+    /// active.
     ///
     /// Nothing is ever launched: the agent whose key was pressed is running in
     /// a pane of a terminal that is by definition already up, so a terminal
-    /// that is not running means the bundle id is wrong, and opening a fresh
-    /// window would not be what the key meant. macOS may refuse a background
-    /// app's `activate` outright, which is what the second attempt is for —
-    /// `openApplication` on an already-running app raises it the way `open -a`
-    /// does.
+    /// that is not running means the detection picked the wrong app. The host
+    /// is read from the running `herdr` client, so iTerm2, Ghostty and friends
+    /// all work. macOS may refuse a background app's `activate` outright, which
+    /// is what the second attempt is for — `openApplication` on an
+    /// already-running app raises it the way `open -a` does.
     private func raiseTerminal() {
-        let identifier = ProcessInfo.processInfo.environment["WL_TERMINAL_BUNDLE_ID"]
-            .flatMap { $0.isEmpty ? nil : $0 } ?? Self.defaultTerminalBundleID
+        guard let identifier = terminalHostBundleID() else {
+            warnMissingTerminalOnce()
+            return
+        }
         guard let app = NSRunningApplication
             .runningApplications(withBundleIdentifier: identifier).first
-        else { return }
-        guard !app.isActive else { return }
-        if app.activate(options: []) { return }
+        else {
+            warnMissingTerminalOnce()
+            return
+        }
+        if app.isActive {
+            app.unhide()
+            return
+        }
+        app.unhide()
+        if app.activate(options: [.activateAllWindows]) { return }
         guard let url = app.bundleURL else { return }
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    /// An explicit override wins; otherwise the detected host is cached for a
+    /// few seconds so back-to-back presses are cheap.
+    private func terminalHostBundleID() -> String? {
+        if let explicit = ProcessInfo.processInfo.environment["WL_TERMINAL_BUNDLE_ID"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !explicit.isEmpty {
+            return explicit
+        }
+        if let cached = terminalHost,
+           Date().timeIntervalSince(cached.at) < Self.terminalHostCacheLifetime {
+            return cached.bundleID
+        }
+        guard let bundleID = TerminalTarget.hostBundleID() else { return nil }
+        terminalHost = (bundleID, Date())
+        return bundleID
+    }
+
+    private func warnMissingTerminalOnce() {
+        guard !warnedMissingTerminal else { return }
+        warnedMissingTerminal = true
+        noteActionError("Focused in Herdr, but the terminal running it was not found. Set WL_TERMINAL_BUNDLE_ID to that app.")
     }
 }
 

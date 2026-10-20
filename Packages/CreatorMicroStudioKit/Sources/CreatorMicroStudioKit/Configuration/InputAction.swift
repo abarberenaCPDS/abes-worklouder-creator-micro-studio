@@ -19,7 +19,7 @@ public enum InputAction: Hashable, Sendable {
     /// The key's own agent slot, or the agent Herdr has focused for an input
     /// with no slot.
     case focusAgent
-    /// Agent slot 1...6, in pad reading order.
+    /// Agent slot 1...13, independent of the number of assigned keycaps.
     case focusSlot(Int)
     case nextTab
     case previousTab
@@ -180,7 +180,7 @@ public enum InputAction: Hashable, Sendable {
     }
 
     /// Valid ranges, shared by parsing and editors.
-    public static let slotRange = 1...Pad.agentKeyIDs.count
+    public static let slotRange = 1...Pad.keyCount
     public static let scrollAmountRange = 1...20
     public static let defaultScrollAmount = 3
 
@@ -521,7 +521,7 @@ public enum InputAction: Hashable, Sendable {
         }
     }
 
-    /// 1...6 for `focusSlot`; clamped when set.
+    /// 1...13 for `focusSlot`; clamped when set.
     public var slot: Int? {
         get { if case .focusSlot(let slot) = self { return slot }; return nil }
         set {

@@ -67,6 +67,17 @@ final class BridgeDispatchTests: XCTestCase {
         XCTAssertEqual(bridge.lastAction?.action, .focusAgent)
     }
 
+    func testDispatchUsesConfiguredAgentSlots() throws {
+        let bridge = try makeBridge(KeyBindings(agentKeyIDs: [8, 0]))
+        XCTAssertEqual(bridge.agentKeyIDs, [0, 8])
+        XCTAssertEqual(bridge.agentSlot(for: 0), 0)
+        XCTAssertEqual(bridge.agentSlot(for: 8), 1)
+        XCTAssertNil(bridge.agentSlot(for: 1))
+        bridge.handleKeyPress(8)
+        XCTAssertEqual(sunk.last?.0, .focusAgent)
+        XCTAssertEqual(sunk.last?.1, 8)
+    }
+
     func testPerformRunsUnsavedActions() throws {
         let bridge = try makeBridge()
         bridge.perform(.modelPickerConfirm)
@@ -135,6 +146,42 @@ final class BridgeDispatchTests: XCTestCase {
         let key1 = picture.threads.filter { $0.id == 1 }
         XCTAssertEqual(key1.count, 1)
         XCTAssertEqual(key1.first?.color, BridgeConfig().launchColor)
+    }
+
+    func testConfiguredLayoutControlsStatusRenderingAndCustomActionsWin() throws {
+        let bindings = KeyBindings(actions: [8: .shellCommand("make")], agentKeyIDs: [8, 0])
+        let bridge = try makeBridge(bindings)
+        let picture = bridge.renderedLighting(for: [
+            HerdrAgent(status: "blocked", paneID: "w1:p1"),
+            HerdrAgent(status: "working", paneID: "w1:p2"),
+        ])
+        let threads = Dictionary(uniqueKeysWithValues: picture.threads.map { ($0.id, $0) })
+        XCTAssertEqual(threads[8]?.color, BridgeConfig().launchColor,
+                       "a custom action suppresses status on a configured slot key")
+        XCTAssertEqual(threads[0]?.color, 0xFF2D2D, "the first physical slot follows configured reading order")
+        XCTAssertEqual(threads[1]?.color, BridgeConfig().focusAgentColor,
+                       "unassigned Focus agent keys return to current-agent lighting")
+    }
+
+    func testBridgeAgentLayoutSetterPersistsAndReloads() throws {
+        let bridge = try makeBridge()
+        try bridge.setAgentKeys([7, 2])
+        XCTAssertEqual(bridge.agentKeyIDs, [2, 7])
+        XCTAssertEqual(bridge.agentSlot(for: 2), 0)
+        XCTAssertEqual(bridge.action(for: 7), .focusAgent)
+        XCTAssertEqual(KeyBindings.load(from: bridge.store).agentKeyIDs, [2, 7])
+    }
+
+    func testBridgeAgentLayoutSetterForwardsExpectedBindingsConflict() throws {
+        let bridge = try makeBridge()
+        let expected = KeyBindings.load(from: bridge.store)
+        try KeyBindings.setAction(.zoomPane, for: 6, store: bridge.store)
+        let before = try Data(contentsOf: URL(fileURLWithPath: bridge.store.path))
+
+        XCTAssertThrowsError(try bridge.setAgentKeys([2, 7], expectedBindings: expected)) {
+            XCTAssertEqual($0 as? KeyBindings.EditError, .configurationChanged)
+        }
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: bridge.store.path)), before)
     }
 
     func testPreviewDoesNotSave() throws {
@@ -211,6 +258,10 @@ final class BridgeDispatchTests: XCTestCase {
         XCTAssertEqual(StatusMapper.actionThread(for: .none, key: 9, cfg)?.effect, .off)
         XCTAssertEqual(StatusMapper.actionThread(for: .insertText(""), key: 9, cfg)?.effect, .off)
         XCTAssertNil(StatusMapper.actionThread(for: .focusAgent, key: 0, cfg), "agent keys show agents")
+        XCTAssertNil(StatusMapper.actionThread(for: .focusAgent, key: 8, cfg, agentKeyIDs: [8]),
+                     "configured keys show status when Focus agent is bound")
+        XCTAssertEqual(StatusMapper.actionThread(for: .focusAgent, key: 8, cfg, agentKeyIDs: [])?.color,
+                       cfg.focusAgentColor, "an unassigned key focuses Herdr's current agent")
         XCTAssertNil(StatusMapper.actionThread(for: .zoomPane, key: 13, cfg), "the dial has no LED")
     }
 

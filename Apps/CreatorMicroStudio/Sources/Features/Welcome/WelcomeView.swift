@@ -191,13 +191,13 @@ struct WelcomeView: View {
 #Preview("Splash Window · 760×560") {
     WelcomeView(onOpenStudio: {}, onDismiss: {},
                 onRequestInputMonitoring: {}, onShowInputMonitoringHelp: {},
-                checkAccess: { true }, isEmulating: false, version: "0.3.1 (7)")
+                checkAccess: { true }, isEmulating: false, version: "0.4.0 (9)")
         .frame(width: 760, height: 560)
 }
 
 #Preview("Splash Window · Input Monitoring Needed") {
     WelcomeView(onOpenStudio: {}, onDismiss: {},
                 onRequestInputMonitoring: {}, onShowInputMonitoringHelp: {},
-                checkAccess: { false }, isEmulating: false, version: "0.3.1 (7)")
+                checkAccess: { false }, isEmulating: false, version: "0.4.0 (9)")
         .frame(width: 760, height: 560)
 }

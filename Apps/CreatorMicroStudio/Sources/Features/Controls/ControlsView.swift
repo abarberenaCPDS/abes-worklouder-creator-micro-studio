@@ -4,8 +4,8 @@ import CreatorMicroStudioKit
 
 /// The input mapping editor: a clickable pad on the left, every input in a
 /// grouped list on the right, and an editor for whatever is selected. Edits
-/// save straight to config.json — there is no modal and no Save button; typed
-/// text saves on Return, blur or 3 s idle — and never touch the device keymap.
+/// save straight to config.json — action edits save as made, typed text saves
+/// on Return, blur or 3 s idle, and agent layout drafts require Apply.
 ///
 /// The bridge publishes on every Herdr poll and status event, so this view's
 /// body runs often. Everything heavy below it — the 20 list rows with their
@@ -28,12 +28,24 @@ struct ControlsView: View {
     @State private var bulkAction: InputAction = .none
     @State private var saveError: String?
     @State private var confirmingResetAll = false
+    @State private var draftAgentKeys: [Int]
+    @State private var loadedAgentKeys: [Int]
+    @State private var pendingAgentKeys: [Int]?
+    @State private var pendingAgentBindings: KeyBindings?
+    @State private var confirmingAgentLayout = false
+    @State private var confirmingAgentReset = false
     @State private var flashedInput: Int?
+
+    /// The familiar factory layout, in physical reading order. This is a
+    /// reset target, not a runtime slot lookup.
+    private static let defaultAgentKeyIDs = Pad.agentKeyIDs
 
     init(bridge: BridgeController, initialSelection: Set<Int> = []) {
         self.bridge = bridge
         _selection = State(initialValue: initialSelection)
         _selectionAnchor = State(initialValue: initialSelection.sorted().first)
+        _draftAgentKeys = State(initialValue: bridge.agentKeyIDs)
+        _loadedAgentKeys = State(initialValue: bridge.agentKeyIDs)
     }
 
     /// How long a text parameter waits after the last keystroke to save.
@@ -49,6 +61,7 @@ struct ControlsView: View {
     private var leftColumn: some View {
         VStack(alignment: .leading, spacing: 14) {
             padCard
+            agentLayoutCard
             editorCard
         }
     }
@@ -91,12 +104,12 @@ struct ControlsView: View {
             bridge.refreshAccessibilityStatus()
             loadEditor()
         }
-        .onDisappear(perform: commitPending)
+        .onDisappear { _ = commitPending() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             bridge.refreshAccessibilityStatus()
         }
         .onChange(of: selection) { newSelection in
-            commitPending()
+            _ = commitPending()
             if newSelection.count == 1 { selectionAnchor = newSelection.first }
             loadEditor()
         }
@@ -107,6 +120,12 @@ struct ControlsView: View {
             guard pendingSave == nil, let editingID else { return }
             editing = bridge.action(for: editingID)
         }
+        .onChange(of: bridge.agentKeyIDs) { keys in
+            if orderedAgentKeys(draftAgentKeys) == orderedAgentKeys(loadedAgentKeys) {
+                draftAgentKeys = orderedAgentKeys(keys)
+            }
+            loadedAgentKeys = keys
+        }
         .onChange(of: bridge.lastAction) { event in flash(event?.input) }
         .confirmationDialog("Reset every input to its default action?",
                             isPresented: $confirmingResetAll) {
@@ -114,7 +133,23 @@ struct ControlsView: View {
                 save { try bridge.resetActions(for: Pad.configurableInputIDs) }
             }
         } message: {
-            Text("Keys 0–5 go back to focusing their agent slot, the dial to effort, the joystick to the model picker and the dial push to play/pause. The device keymap is not touched.")
+            Text("Actions return to their defaults, including Focus Agent on the configured agent keys. The device keymap is not touched.")
+        }
+        .confirmationDialog(agentLayoutConfirmationTitle,
+                            isPresented: $confirmingAgentLayout) {
+            Button("Apply agent layout") { applyPendingAgentLayout() }
+            Button("Cancel", role: .cancel) { clearPendingAgentLayout() }
+        } message: {
+            Text(agentLayoutConfirmationMessage)
+        }
+        .confirmationDialog("Reset the agent layout?",
+                            isPresented: $confirmingAgentReset) {
+            Button("Reset agent layout", role: .destructive) {
+                applyPendingAgentLayout()
+            }
+            Button("Cancel", role: .cancel) { clearPendingAgentLayout() }
+        } message: {
+            Text(resetAgentLayoutMessage)
         }
     }
 
@@ -125,7 +160,7 @@ struct ControlsView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("Controls")
                     .font(.largeTitle.weight(.bold))
-                Text("Choose what every key, the dial and the joystick do. Changes save as you make them.")
+                Text("Choose what every key, the dial and the joystick do. Actions save as you edit; agent layouts require Apply.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -255,6 +290,7 @@ struct ControlsView: View {
                 keyBindings: bridge.keyBindings,
                 keyColors: bridge.keyColors,
                 agentNames: bridge.agents.map(\.displayName),
+                agentKeyIDs: bridge.agentKeyIDs,
                 selection: selection,
                 flashedInput: flashedInput,
                 onSelect: padClick
@@ -269,10 +305,194 @@ struct ControlsView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
     }
 
+    // MARK: - Agent layout
+
+    private var agentLayoutIsDirty: Bool {
+        orderedAgentKeys(draftAgentKeys) != orderedAgentKeys(bridge.agentKeyIDs)
+    }
+
+    private var orderedDraftAgentKeys: [Int] { orderedAgentKeys(draftAgentKeys) }
+
+    private var agentLayoutCard: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("AGENT LAYOUT")
+                    .font(.system(.caption, design: .monospaced).weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .tracking(1)
+                Spacer()
+                Text("\(orderedDraftAgentKeys.count) agent keys · \(Pad.configurableActionKeyIDs.count - orderedDraftAgentKeys.count) action keys")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(Array(Pad.displayRows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 6) {
+                    ForEach(row, id: \.self) { key in
+                        agentLayoutKey(key)
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button("Apply layout") { requestAgentLayout(orderedDraftAgentKeys) }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!agentLayoutIsDirty)
+                Button("Reset…") {
+                    requestAgentLayoutReset()
+                }
+                    .buttonStyle(.bordered)
+                    .disabled(!agentLayoutIsDirty && orderedAgentKeys(bridge.agentKeyIDs) == Self.defaultAgentKeyIDs)
+                Spacer(minLength: 4)
+            }
+            Text("Slots follow Herdr's current agent list, not agent identities. Selected keys are draft slots until applied; a custom action on a layout key still runs instead of focusing its slot. No drag ordering — slots follow physical reading order.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func agentLayoutKey(_ key: Int) -> some View {
+        let slot = orderedDraftAgentKeys.firstIndex(of: key)
+        let currentActionTakesPrecedence = slot != nil && bridge.action(for: key) != .focusAgent
+        return Button {
+            if let slot = draftAgentKeys.firstIndex(of: key) {
+                draftAgentKeys.remove(at: slot)
+            } else {
+                draftAgentKeys = orderedAgentKeys(draftAgentKeys + [key])
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text("\(key)")
+                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+                if let slot {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 7, weight: .black))
+                    Text("S\(slot + 1)")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                } else {
+                    Image(systemName: "plus")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .frame(minWidth: 34, minHeight: 28)
+            .padding(.horizontal, 3)
+            .background(slot == nil ? Color.secondary.opacity(0.08) : Color.accentColor.opacity(0.18),
+                        in: RoundedRectangle(cornerRadius: 6))
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(currentActionTakesPrecedence ? Color.orange.opacity(0.8) : Color.secondary.opacity(0.2), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .help(slot.map { currentActionTakesPrecedence
+            ? "Key \(key), draft slot \($0 + 1); its current action runs, not agent status."
+            : "Key \(key), draft agent slot \($0 + 1)"
+        } ?? "Key \(key), action key in the draft layout")
+        .accessibilityLabel(slot.map { currentActionTakesPrecedence
+            ? "Key \(key), draft slot \($0 + 1), current action takes precedence"
+            : "Key \(key), draft agent slot \($0 + 1)"
+        } ?? "Key \(key), action key")
+        .accessibilityAddTraits(slot == nil ? [] : .isSelected)
+        .accessibilityHint(slot == nil ? "Activate to add this key to the draft agent layout." : "Activate to remove this key from the draft agent layout.")
+    }
+
+    private func orderedAgentKeys(_ keys: [Int]) -> [Int] {
+        let selected = Set(keys)
+        return Pad.displayRows.flatMap { $0 }.filter { selected.contains($0) }
+    }
+
+    private func requestAgentLayout(_ keys: [Int]) {
+        guard let replacedCustom = prepareAgentLayout(keys) else { return }
+        if !replacedCustom.isEmpty {
+            confirmingAgentLayout = true
+        } else {
+            applyPendingAgentLayout()
+        }
+    }
+
+    private func requestAgentLayoutReset() {
+        guard prepareAgentLayout(Self.defaultAgentKeyIDs) != nil else { return }
+        confirmingAgentReset = true
+    }
+
+    /// Commit a waiting text action before deciding which actions an incoming
+    /// layout would replace. Capture these exact bindings for the later
+    /// compare-and-save so a concurrent writer cannot be silently overwritten.
+    private func prepareAgentLayout(_ keys: [Int]) -> [Int]? {
+        guard flushPendingActionSave() else { return nil }
+        let ordered = orderedAgentKeys(keys)
+        let added = Set(ordered).subtracting(bridge.agentKeyIDs)
+        let replacedCustom = added.filter { bridge.keyBindings.isCustomised($0) }.sorted()
+        pendingAgentKeys = ordered
+        pendingAgentBindings = bridge.keyBindings
+        return replacedCustom
+    }
+
+    private func clearPendingAgentLayout() {
+        pendingAgentKeys = nil
+        pendingAgentBindings = nil
+    }
+
+    private var resetAgentLayoutMessage: String {
+        let bindings = pendingAgentBindings ?? bridge.keyBindings
+        let added = Set(Self.defaultAgentKeyIDs).subtracting(bindings.agentKeyIDs)
+        let replacedCustom = added.filter { bindings.isCustomised($0) }.sorted()
+        let factory = "Restore the factory layout (keys 1, 0, 2, 3, 4 and 5 in physical reading order)."
+        guard !replacedCustom.isEmpty else { return factory + " Removed keys keep their actions." }
+        let details = replacedCustom.map { "Key \($0) (\(bindings.action(for: $0).summary))" }.joined(separator: ", ")
+        return factory + " This replaces custom actions on newly added keys: \(details). Removed keys keep their actions."
+    }
+
+    private var agentLayoutConfirmationTitle: String {
+        "Apply this agent layout?"
+    }
+
+    private var agentLayoutConfirmationMessage: String {
+        guard let keys = pendingAgentKeys else { return "Apply the selected physical reading-order slots." }
+        let bindings = pendingAgentBindings ?? bridge.keyBindings
+        let added = Set(keys).subtracting(bindings.agentKeyIDs)
+        let replacedCustom = added.filter { bindings.isCustomised($0) }.sorted()
+        guard !replacedCustom.isEmpty else {
+            return "New agent keys: \(added.sorted().map(String.init).joined(separator: ", ")). Their current actions will be replaced with Focus Agent."
+        }
+        let details = replacedCustom.map { key in
+            "Key \(key) (\(bindings.action(for: key).summary))"
+        }.joined(separator: ", ")
+        return "Adding these keys replaces their custom actions with Focus Agent: \(details). Other removed keys keep their actions."
+    }
+
+    private func applyPendingAgentLayout() {
+        guard let keys = pendingAgentKeys else { return }
+        let expectedBindings = pendingAgentBindings
+        pendingAgentKeys = nil
+        pendingAgentBindings = nil
+        guard flushPendingActionSave() else { return }
+        guard let expectedBindings else {
+            saveError = "Could not save the agent layout: no confirmed binding snapshot is available."
+            return
+        }
+        do {
+            try bridge.setAgentKeys(keys, expectedBindings: expectedBindings)
+            saveError = nil
+            draftAgentKeys = orderedAgentKeys(bridge.agentKeyIDs)
+            loadEditor()
+        } catch {
+            if error as? KeyBindings.EditError == .configurationChanged {
+                bridge.reloadKeyBindings()
+                loadEditor()
+            }
+            saveError = "Could not save the agent layout (the configuration may have changed since confirmation): \(error.localizedDescription)"
+        }
+    }
+
     private var quickSelectMenu: some View {
         Menu {
             Button("All keys") { selection = Set(Pad.InputGroup.keys.inputs.map(\.id)) }
-            Button("Agent keys (0–5)") { selection = Set(Pad.agentKeyIDs) }
+            Button("Agent keys (\(bridge.agentKeyIDs.count))") { selection = Set(bridge.agentKeyIDs) }
             Button("Dial") { selection = Set(Pad.InputGroup.dial.inputs.map(\.id)) }
             Button("Joystick") { selection = Set(Pad.InputGroup.joystick.inputs.map(\.id)) }
             Button("Customised inputs") {
@@ -382,14 +602,14 @@ struct ControlsView: View {
                 )
             }
 
-            ActionEditor(action: $editing, inputID: id, context: editorContext, onSubmit: commitPending)
+            ActionEditor(action: $editing, inputID: id, context: editorContext, onSubmit: { _ = commitPending() })
                 .equatable()
                 .id(id)
 
             HStack {
                 Button {
                     // Run what the editor shows, even if saving it failed.
-                    commitPending()
+                    _ = commitPending()
                     bridge.perform(editing, from: id)
                 } label: {
                     Label("Test", systemImage: "play.fill")
@@ -470,6 +690,7 @@ struct ControlsView: View {
     private var editorContext: ActionEditor.Context {
         ActionEditor.Context(
             agentNames: bridge.agents.map(\.displayName),
+            agentKeyIDs: bridge.agentKeyIDs,
             accessibilityTrusted: bridge.accessibilityTrusted,
             herdr: HerdrCommand.Context(status: bridge.herdr, agents: bridge.agents)
         )
@@ -524,21 +745,32 @@ struct ControlsView: View {
             pendingSave = Task { @MainActor in
                 try? await Task.sleep(nanoseconds: Self.textSaveDelay)
                 guard !Task.isCancelled else { return }
-                commitPending()
+                _ = commitPending()
             }
         } else {
-            commitPending()
+            _ = commitPending()
         }
     }
 
     /// Saves the single-input edit now if it differs from what is on disk.
-    private func commitPending() {
+    @discardableResult
+    private func commitPending() -> Bool {
         pendingSave?.cancel()
         pendingSave = nil
-        guard let id = editingID else { return }
+        guard let id = editingID else { return true }
         let action = editing
-        guard action != bridge.action(for: id) else { return }
-        save { try bridge.setAction(action, for: id) }
+        guard action != bridge.action(for: id) else { return true }
+        return save { try bridge.setAction(action, for: id) }
+    }
+
+    /// Flushes the debounced text editor and reports failure to layout changes
+    /// so a later layout write cannot mask an action-save failure.
+    private func flushPendingActionSave() -> Bool {
+        guard commitPending() else {
+            saveError = (saveError ?? "Could not save the pending action.") + " The agent layout was not applied."
+            return false
+        }
+        return true
     }
 
     /// Inline list picker: switch the kind and keep what parameters carry over.
@@ -560,12 +792,15 @@ struct ControlsView: View {
         loadEditor()
     }
 
-    private func save(_ write: () throws -> Void) {
+    @discardableResult
+    private func save(_ write: () throws -> Void) -> Bool {
         do {
             try write()
             saveError = nil
+            return true
         } catch {
             saveError = "Could not save to config.json: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -617,7 +852,7 @@ struct ControlsView: View {
     private func groupFooter(_ group: Pad.InputGroup) -> some View {
         switch group {
         case .keys:
-            Text("With Focus agent, keys 0–5 jump to Herdr agent slots 1–6 in reading order; other keys return to the current agent.")
+            Text("With Focus Agent, configured agent keys focus their slot in physical reading order; other keys return to the current agent. Custom actions take precedence over agent status.")
         case .dial:
             Text("Turning sends one event per detent; the push is the dial's click.")
         case .joystick:
@@ -680,7 +915,12 @@ struct ControlsView: View {
 
     private func herdrLine(for id: Int, action: InputAction, mapping: HerdrInputMapping? = nil) -> HerdrMappingLine? {
         let mapping = mapping ?? bridge.inputMappings.first { $0.id == id }
-        let slot = HerdrInputMapping.slot(for: action, input: id)
+        let slot: Int?
+        switch action {
+        case .focusAgent: slot = bridge.agentSlot(for: id)
+        case .focusSlot(let selectedSlot): slot = selectedSlot - 1
+        default: slot = nil
+        }
         if let slot {
             // The live mapping only describes the saved action; an unsaved
             // slot change looks the agent up directly.
@@ -922,6 +1162,7 @@ private struct ActionEditor: View, Equatable {
     /// What the editor reads from the bridge.
     struct Context: Equatable {
         var agentNames: [String]
+        var agentKeyIDs: [Int]
         var accessibilityTrusted: Bool
         var herdr: HerdrCommand.Context
     }
@@ -1014,7 +1255,7 @@ private struct ActionEditor: View, Equatable {
         switch parameter {
         case .slot:
             Picker("Slot", selection: Binding(get: { action.slot ?? 1 }, set: { action.slot = $0 })) {
-                ForEach(Array(InputAction.slotRange), id: \.self) { slot in
+                ForEach(InputAction.slotRange, id: \.self) { slot in
                     Text(slotTitle(slot)).tag(slot)
                 }
             }
@@ -1113,11 +1354,11 @@ private struct ActionEditor: View, Equatable {
     private var note: String? {
         switch action {
         case .focusAgent:
-            guard let inputID else { return "Agent keys 0–5 focus their slot; every other input returns to the current agent." }
-            if let slot = Pad.agentSlot(for: inputID) {
+            guard let inputID else { return "Configured agent keys focus their slots; every other input returns to the current agent." }
+            if let slot = context.agentKeyIDs.firstIndex(of: inputID) {
                 return "Focuses Herdr agent slot \(slot + 1)."
             }
-            return "Returns focus to the agent already selected in Herdr. Keys 0–5 focus their own agent slot."
+            return "Returns focus to the agent already selected in Herdr. Configured agent keys focus their own slots."
         case .insertText:
             return "Types the text into the focused agent's pane without submitting it."
         case .submitPrompt:
@@ -1198,13 +1439,15 @@ private struct ControlsPadView: View, Equatable {
     let keyColors: [Int: Color]
     /// Agent display names in slot order.
     let agentNames: [String]
+    let agentKeyIDs: [Int]
     let selection: Set<Int>
     let flashedInput: Int?
     let onSelect: (Int) -> Void
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.keyBindings == rhs.keyBindings && lhs.keyColors == rhs.keyColors
-            && lhs.agentNames == rhs.agentNames && lhs.selection == rhs.selection
+            && lhs.agentNames == rhs.agentNames && lhs.agentKeyIDs == rhs.agentKeyIDs
+            && lhs.selection == rhs.selection
             && lhs.flashedInput == rhs.flashedInput
     }
 
@@ -1302,7 +1545,7 @@ private struct ControlsPadView: View, Equatable {
 
     private func keyTitle(_ key: Int, action: InputAction) -> String {
         if action == .focusAgent {
-            guard let slot = Pad.agentSlot(for: key) else { return "Current agent" }
+            guard let slot = agentKeyIDs.firstIndex(of: key) else { return "Current agent" }
             return slot < agentNames.count ? agentNames[slot] : "Slot \(slot + 1)"
         }
         return action.title
@@ -1310,7 +1553,14 @@ private struct ControlsPadView: View, Equatable {
 
     private func description(_ input: Int, action: InputAction) -> String {
         let name = Pad.input(input)?.name ?? "Input \(input)"
-        return "\(name): \(action.summary)"
+        if action == .focusAgent, let slot = agentKeyIDs.firstIndex(of: input) {
+            let agent = slot < agentNames.count ? ": \(agentNames[slot])" : ""
+            return "\(name), Focus Agent slot \(slot + 1)\(agent); its color shows agent status."
+        }
+        if let slot = agentKeyIDs.firstIndex(of: input) {
+            return "\(name), layout slot \(slot + 1), but \(action.summary) takes precedence; its color shows the action, not agent status."
+        }
+        return "\(name): \(action.summary); its color shows the action."
     }
 
     private var dial: some View {

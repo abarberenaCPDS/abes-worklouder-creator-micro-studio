@@ -143,10 +143,15 @@ public struct HerdrInputMapping: Equatable, Sendable, Identifiable {
         self.agent = agent
     }
 
-    /// The 0-based slot an input reaches with this action, if any.
-    public static func slot(for action: InputAction, input: Int) -> Int? {
+    /// The 0-based slot an input reaches with this action, if any. The stock
+    /// layout default is for compatibility; mappings pass active bindings.
+    public static func slot(
+        for action: InputAction,
+        input: Int,
+        agentKeyIDs: [Int] = Pad.agentKeyIDs
+    ) -> Int? {
         switch action {
-        case .focusAgent: return Pad.agentSlot(for: input)
+        case .focusAgent: return agentKeyIDs.firstIndex(of: input)
         case .focusSlot(let slot): return slot - 1
         default: return nil
         }
@@ -156,16 +161,19 @@ public struct HerdrInputMapping: Equatable, Sendable, Identifiable {
     public static func mappings(bindings: KeyBindings, agents: [HerdrAgent]) -> [HerdrInputMapping] {
         Pad.inputs.map { input in
             let action = bindings.action(for: input.id)
-            let slot = slot(for: action, input: input.id)
+            let slot = slot(for: action, input: input.id, agentKeyIDs: bindings.agentKeyIDs)
             let agent = slot.flatMap { $0 >= 0 && $0 < agents.count ? agents[$0] : nil }
             return HerdrInputMapping(input: input, action: action, slot: slot, agent: agent)
         }
     }
 
-    /// Agents no input reaches: beyond the six slots, or in a slot whose key
+    /// Agents no input reaches: beyond the configured slots, or in a slot whose key
     /// was remapped and that no Focus agent slot action names.
-    public static func unassignedAgentIndices(bindings: KeyBindings, agents: [HerdrAgent]) -> [Int] {
-        let reached = Set(mappings(bindings: bindings, agents: agents).compactMap(\.slot))
+    public static func unassignedAgentIndices(
+        bindings: KeyBindings, agents: [HerdrAgent], unavailableInputs: Set<Int> = []
+    ) -> [Int] {
+        let reached = Set(mappings(bindings: bindings, agents: agents)
+            .filter { !unavailableInputs.contains($0.input.id) }.compactMap(\.slot))
         return agents.indices.filter { !reached.contains($0) }
     }
 }

@@ -83,6 +83,25 @@ final class StatusMapperTests: XCTestCase {
         XCTAssertEqual(StatusMapper.threads(for: many).count, 6)
     }
 
+    func testConfiguredAgentKeysMapSlotsInSuppliedPhysicalOrder() {
+        let keys = KeyBindings(agentKeyIDs: [12, 3, 1]).agentKeyIDs
+        let threads = StatusMapper.threads(for: [agent("working"), agent("blocked"), agent("idle")],
+                                           agentKeyIDs: keys)
+        XCTAssertEqual(keys, [1, 3, 12])
+        XCTAssertEqual(threads.map(\.id), keys)
+        XCTAssertEqual(threads.map(\.color), [0xFFA000, 0xFF2D2D, 0x00C853])
+        XCTAssertEqual(StatusMapper.threads(for: [agent("working")], agentKeyIDs: []).count, 0)
+    }
+
+    func testThirteenConfiguredKeysPaintAllSlotsInPhysicalOrder() {
+        let layout = KeyBindings(agentKeyIDs: Array((0..<Pad.keyCount).reversed())).agentKeyIDs
+        let threads = StatusMapper.threads(for: (0..<Pad.keyCount).map { _ in agent("working") },
+                                           agentKeyIDs: layout)
+        XCTAssertEqual(layout, Pad.displayRows.flatMap { $0 })
+        XCTAssertEqual(threads.count, Pad.keyCount)
+        XCTAssertEqual(threads.map(\.id), Pad.displayRows.flatMap { $0 })
+    }
+
     func testConfigOverridesAreHonoured() {
         var cfg = BridgeConfig()
         cfg.colors["working"] = 0x123456

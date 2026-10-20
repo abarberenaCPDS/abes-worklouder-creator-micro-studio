@@ -174,6 +174,10 @@ struct HerdrView: View {
             Text("Click a row to focus that agent in Herdr.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Text("Dedicated Focus Agent keys follow the configured physical reading-order layout. Custom actions take precedence; explicit Focus Agent Slot actions can reach agents beyond that layout.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -296,7 +300,7 @@ struct HerdrView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
-            Text("No input reaches these agents: they are beyond the six slots, or their key does something else.")
+            Text("These agents have no dedicated or explicit slot input. Focus Agent on an action key still returns to whichever agent is currently selected in Herdr. Click a row here to focus it directly.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

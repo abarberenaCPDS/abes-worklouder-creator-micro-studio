@@ -94,6 +94,35 @@ final class HerdrStatusTests: XCTestCase {
         XCTAssertEqual(HerdrInputMapping.unassignedAgentIndices(bindings: KeyBindings(), agents: agents(8)), [6, 7])
     }
 
+    func testMappingsUseConfiguredReadingOrderAndExplicitSlotsThroughThirteen() {
+        let bindings = KeyBindings(actions: [Pad.joyNorthID: .focusSlot(13)], agentKeyIDs: [12, 3])
+        let mappings = HerdrInputMapping.mappings(bindings: bindings, agents: agents(13))
+        let byID = Dictionary(uniqueKeysWithValues: mappings.map { ($0.id, $0) })
+        XCTAssertEqual(bindings.agentKeyIDs, [3, 12])
+        XCTAssertEqual(byID[3]?.slot, 0)
+        XCTAssertEqual(byID[12]?.slot, 1)
+        XCTAssertEqual(byID[Pad.joyNorthID]?.slot, 12, "focus-slot is independent of assigned key count")
+        XCTAssertEqual(HerdrInputMapping.unassignedAgentIndices(bindings: bindings, agents: agents(13)),
+                       Array(2...11))
+    }
+
+    func testEmptyLayoutHasNoImplicitAgentSlots() {
+        let bindings = KeyBindings(agentKeyIDs: [])
+        let mappings = HerdrInputMapping.mappings(bindings: bindings, agents: agents(3))
+        XCTAssertTrue(mappings.allSatisfy { $0.slot == nil })
+        XCTAssertEqual(HerdrInputMapping.unassignedAgentIndices(bindings: bindings, agents: agents(3)), [0, 1, 2])
+    }
+
+    func testUnavailableControlsDoNotClaimDedicatedAgentReachability() {
+        let bindings = KeyBindings(actions: [Pad.joyNorthID: .focusSlot(13),
+                                              Pad.dialPushID: .focusSlot(12)], agentKeyIDs: [])
+        XCTAssertEqual(HerdrInputMapping.unassignedAgentIndices(bindings: bindings, agents: agents(13)),
+                       Array(0...10))
+        XCTAssertEqual(HerdrInputMapping.unassignedAgentIndices(
+            bindings: bindings, agents: agents(13), unavailableInputs: [Pad.joyNorthID, Pad.dialPushID]),
+                       Array(0...12))
+    }
+
     func testRemappedSlotKeyLeavesItsAgentUnassignedUnlessAnotherInputReachesIt() {
         let remapped = KeyBindings(actions: [2: .zoomPane])
         XCTAssertEqual(HerdrInputMapping.unassignedAgentIndices(bindings: remapped, agents: agents(3)), [2])

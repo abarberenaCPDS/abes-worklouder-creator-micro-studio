@@ -69,17 +69,24 @@ all three drive the same lighting and will overwrite each other.
 running — green all idle, amber something working, red something needs you —
 and a badge when the pad is missing or permission is denied.
 
-**The six dedicated agent keys** focus one agent each, in the order Herdr's own
-panel lists them. Colours are red (blocked, breathing), amber (working), blue
+**Agent keys** focus one agent each, in the order Herdr lists them. Studio →
+**Controls → Agent layout** lets you dedicate any of the 13 keycaps to agents,
+including none or all of them. Slots follow physical reading order; the default
+is keys 1, 0, 2, 3, 4 and 5. Six is our original pad layout, **not a Herdr agent
+limit**. Slots follow the current list, not permanent agent identities.
+Colours are red (blocked, breathing), amber (working), blue
 (done — finished but not yet looked at) and green (idle — finished and seen).
 Herdr distinguishes done from idle by whether you have focused the pane yet, so
 blue means something is waiting to be read and green means quiet. The
 **underglow** carries the worst state across all agents.
 
-Every physical key defaults to **Focus Agent**. Keys 0–5 focus their assigned
-agent and bring its terminal forward; the remaining keys return focus to the
-agent currently selected in Herdr. Set `WL_TERMINAL_BUNDLE_ID` if your panes do
-not live in Ghostty.
+Every physical key defaults to **Focus Agent**. Configured agent keys focus
+their assigned agent and bring its terminal forward; other keys with that
+action return focus to the agent currently selected in Herdr. A custom action
+on an agent-layout key takes precedence and shows action lighting instead.
+The terminal is detected from the running
+`herdr` client, so iTerm2, Ghostty, Terminal and the usual alternatives all
+work; set `WL_TERMINAL_BUNDLE_ID` to force a specific app.
 
 **The dial** tunes reasoning effort and its **push** plays/pauses media
 (a host-side media key: it needs the Accessibility permission, see below).
@@ -91,7 +98,7 @@ action. Open **Controls** in Studio to change them:
 | action | what it does |
 |---|---|
 | Focus Agent | focuses the key's assigned agent, or returns to Herdr's current agent |
-| Focus slot 1–6 | focuses the agent in that slot, from any input |
+| Focus slot 1–13 | focuses the agent in that slot, from any input, independently of the dedicated-key count |
 | Next / previous tab, workspace | moves through Herdr's tabs or workspaces |
 | Focus pane up/down/left/right, zoom pane | moves between and zooms Herdr panes |
 | Send keys to agent | sends keys such as `ctrl+c esc` to the focused agent |
@@ -114,6 +121,21 @@ sends itself instead of the firmware's `KC_MPLY`, so it also only works while
 the Studio bridge is on; bind the dial push to something else (or Do nothing)
 if you would rather not grant it. The Controls page marks every input that
 needs the permission, lists them when it is missing, and asks for it.
+
+### Agent layout
+
+Choose the agent keycaps in **Controls → Agent layout**, then apply the layout.
+Adding an agent key assigns **Focus Agent**; Studio confirms before replacing
+a different action. Removing a key leaves its binding intact, so **Focus Agent**
+on that key now returns to the current agent. Layout and required binding edits
+are saved together. Resetting the layout restores the original six positions,
+not the rest of your actions or lighting.
+
+An empty slot has no agent to focus and shows its saved resting look, or stays
+dark. Agents without dedicated keys still appear in Studio and contribute to
+the underglow. Dial and joystick inputs can focus explicit slots but have no
+key LEDs. These changes are host-side settings and do not rewrite the device
+keymap.
 
 ### Herdr commands
 
@@ -232,8 +254,8 @@ The Studio sidebar has a page for each of the things Studio keeps:
   input reaches, and every input bound to a Herdr action. Click a row to focus
   the agent.
 
-Everything is saved to `~/.config/creator-micro-studio/config.json`. Actions
-and lighting are host-side: they never rewrite the device keymap or consume
+Everything is saved to `~/.config/creator-micro-studio/config.json`. Agent layout,
+actions and lighting are host-side: they never rewrite the device keymap or consume
 flash.
 
 ## 🎮 No pad to hand
@@ -265,11 +287,12 @@ still needs the physical pad.
 
 ## ⚙️ Configuration
 
-Everything works without a config file. Studio saves action, prompt and
+Everything works without a config file. Studio saves agent-layout, action, prompt and
 lighting overrides to `config.json` in `~/.config/creator-micro-studio/`:
 
 ```json
 {
+  "agentKeys": [1, 0, 2, 3, 4, 5],
   "keys": {
     "9":     "Open a pull request for this branch",
     "10+11": "Summarise what you are working on"
@@ -310,6 +333,11 @@ Existing `~/.config/micromanager/config.json` files are still read when the new
 location does not exist. Studio rewrites the file atomically and keeps any keys
 it does not know about.
 
+**Agent layout.** `agentKeys` selects keycap IDs 0–12; Studio normalizes them to
+physical reading order. An absent field uses the original six-key layout;
+`[]` deliberately disables dedicated agent keys. Use Controls to edit the
+layout and confirm any replacement bindings together.
+
 **Inputs.** Ids are `0`–`12` for the keys, `13`/`14`/`19` for dial right, left
 and push, and `15`/`16`/`17`/`18` for joystick up, left, down and right. The
 names `dial-right`, `dial-left`, `dial-push`, `joy-up`, `joy-left`, `joy-down`
@@ -320,7 +348,7 @@ keycaps, and a specific `"10"` or `"11"` wins over it.
 `next-tab`, `previous-tab`, `next-workspace`, `previous-workspace`,
 `zoom-pane`, `effort-up`, `effort-down`, `model-next`, `model-previous`,
 `model-picker-confirm`, `model-picker-cancel`, `voice` and `none`. Actions with settings are objects with a `"type"`:
-`focus-slot` (`slot` 1–6), `focus-pane` (`direction`), `send-keys` (`keys`),
+`focus-slot` (`slot` 1–13, Studio's action range—not a Herdr limit), `focus-pane` (`direction`), `send-keys` (`keys`),
 `herdr-command` (`command`, a Herdr CLI line as above), `insert-text`, `submit-prompt` and `type-text`
 (`text`), `scroll` (`direction`, `amount` 1–20), `keyboard-shortcut` (`keys`),
 `media-key` (`key`: `play-pause`, `next`, `previous`, `volume-up`,
@@ -341,7 +369,7 @@ to read it from.
 
 | variable | what it overrides |
 |---|---|
-| `WL_TERMINAL_BUNDLE_ID` | the terminal to raise (default Ghostty) |
+| `WL_TERMINAL_BUNDLE_ID` | forces the terminal to raise (detected from the running `herdr` client by default) |
 | `HERDR_SOCKET_PATH` | the Herdr socket |
 | `WL_HERDR_PATH` | the `herdr` program Herdr commands run |
 
